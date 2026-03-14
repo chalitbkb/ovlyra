@@ -71,6 +71,8 @@ class TtsRLHFDataset(torch.utils.data.Dataset):
             "prompt_speech_ids": torch.tensor(speech_ids),
             "completion_truth": text_to_synthesize,
             "prompt_wav_path": sample.wav_path,
+            "language": sample.language,
+            "prompt_transcript": sample.transcript,
         }
 
         return result

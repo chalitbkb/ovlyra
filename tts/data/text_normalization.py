@@ -2,10 +2,13 @@
 
 import abc
 import logging as base_logging
+import re
 
 import lingua
 import unidecode
 from nemo_text_processing.text_normalization import normalize
+from pythainlp.util import normalize as thai_normalize
+from pythainlp.util import num_to_thaiword
 
 base_logging.getLogger("NeMo-text-processing").setLevel(base_logging.CRITICAL)
 
@@ -16,6 +19,7 @@ _CHINESE = "zh"
 _SPANISH = "es"
 _FRENCH = "fr"
 _GERMAN = "de"
+_THAI = "th"
 
 
 class TextNormalizer(metaclass=abc.ABCMeta):
@@ -56,7 +60,8 @@ class NemoTextNormalizer(TextNormalizer):
 
     def __init__(self):
         super().__init__()
-        self._supported_languages = [
+        # Languages supported by NeMo text normalization.
+        self._nemo_languages = [
             _ENGLISH,
             _JAPANESE,
             _CHINESE,
@@ -64,9 +69,10 @@ class NemoTextNormalizer(TextNormalizer):
             _FRENCH,
             _GERMAN,
         ]
+        self._supported_languages = self._nemo_languages + [_THAI]
         self._normalize_text = {
             lang: normalize.Normalizer(input_case="cased", lang=lang)
-            for lang in self._supported_languages
+            for lang in self._nemo_languages
         }
         self.lang_detector = None
 
@@ -79,6 +85,7 @@ class NemoTextNormalizer(TextNormalizer):
             lingua.Language.SPANISH,
             lingua.Language.FRENCH,
             lingua.Language.GERMAN,
+            lingua.Language.THAI,
         ).build()
 
     def convert_to_ascii(self, text: str) -> str:
@@ -107,10 +114,20 @@ class NemoTextNormalizer(TextNormalizer):
                 return self.normalize_with_language(text, _FRENCH)
             elif language == lingua.Language.GERMAN:
                 return self.normalize_with_language(text, _GERMAN)
+            elif language == lingua.Language.THAI:
+                return self.normalize_with_language(text, _THAI)
             else:
                 return text
         except Exception:
             return text
+
+    def _normalize_thai(self, text: str) -> str:
+        """Normalize Thai text using pythainlp."""
+        # Normalize Thai characters (fix combining characters, sara issues, etc.)
+        text = thai_normalize(text)
+        # Convert Arabic numerals to Thai words (e.g., "123" → "หนึ่งร้อยยี่สิบสาม")
+        text = re.sub(r"\d+", lambda m: num_to_thaiword(int(m.group())), text)
+        return text
 
     def normalize_with_language(self, text: str, language: str) -> str:
         if language not in self._supported_languages:
@@ -118,6 +135,12 @@ class NemoTextNormalizer(TextNormalizer):
 
         if language == _ENGLISH:
             text = self.convert_to_ascii(text)
+
+        if language == _THAI:
+            try:
+                return self._normalize_thai(text)
+            except Exception:
+                return text
 
         try:
             text = self._normalize_text[language].normalize(text)

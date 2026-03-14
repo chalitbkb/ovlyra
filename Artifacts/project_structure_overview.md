@@ -61,8 +61,9 @@
 ### NLP & Text Processing
 | Library | บทบาท |
 |---------|--------|
-| `nemo_text_processing` | Text normalization (ตัวเลข→คำ, ย่อ→เต็ม) สำหรับ 6 ภาษา |
-| `lingua-language-detector` | ตรวจจับภาษาอัตโนมัติ |
+| `nemo_text_processing` | Text normalization (ตัวเลข→คำ, ย่อ→เต็ม) สำหรับ 6 ภาษา (en/ja/zh/es/fr/de) |
+| `pythainlp` | Thai text normalization (normalize ตัวอักษร + num_to_thaiword) |
+| `lingua-language-detector` | ตรวจจับภาษาอัตโนมัติ (8 ภาษา) |
 | `jiwer` | WER/CER computation |
 | `zhconv` / `zhon` | Chinese text normalization |
 | `unidecode` | Unicode → ASCII conversion |
@@ -224,12 +225,12 @@
 - `chunk_work()`: แบ่ง work items ให้ distributed workers ตาม rank
 
 #### `filtering.py` — Dataset Filters
-- Static: `filter_empty_transcript`, `filter_non_english`, `filter_long_duration` (>30s), `filter_punct_or_space_only_transcript`
+- Static: `filter_empty_transcript`, `filter_non_english` (ไม่ใช้แล้วใน `load_samples()` — ยังคงมีฟังก์ชันอยู่แต่ถูกลบออกจาก pipeline), `filter_long_duration` (>30s), `filter_punct_or_space_only_transcript`
 - Factory (closures): `filter_allowed_languages(langs)`, `filter_min_sample_rate(rate)`, `filter_min_dnsmos_score(score)`, `filter_min_audio_duration(dur)`
 - แต่ละ filter return `None` (pass) หรือ reason string (filtered out)
 
 #### `text_normalization.py` — Text Normalization
-- `NemoTextNormalizer`: ใช้ NVIDIA NeMo ITN สำหรับ 6 ภาษา (en/ja/zh/es/fr/de) — แปลง "$1,456" → "one thousand four hundred fifty six dollars", auto-detect ภาษาด้วย `lingua`
+- `NemoTextNormalizer`: ใช้ NVIDIA NeMo ITN สำหรับ 6 ภาษา (en/ja/zh/es/fr/de) + **Thai ใช้ `pythainlp`** (`pythainlp.util.normalize` + `num_to_thaiword`) — รวม 7 ภาษา, auto-detect ภาษาด้วย `lingua` (8 ภาษา)
 - `NoOpTextNormalizer`: ไม่ทำอะไร (bypass)
 - `create_text_normalizer(enable)`: factory
 
@@ -250,7 +251,7 @@
 - `TextPretrainingDataset`: next-token prediction บน tokenized text จาก `.npy` memmap
 
 **`rlhf.py`** — RLHF Dataset:
-- `TtsRLHFDataset`: ใช้ `InferencePromptCompiler` — ใช้ sample ปัจจุบันเป็น prompt audio, ใช้ **sample ถัดไป** เป็น `text_to_synthesize` — return `prompt` string + `prompt_speech_ids` + `completion_truth` + `prompt_wav_path` สำหรับ GRPO training
+- `TtsRLHFDataset`: ใช้ `InferencePromptCompiler` — ใช้ sample ปัจจุบันเป็น prompt audio, ใช้ **sample ถัดไป** เป็น `text_to_synthesize` — return `prompt` string + `prompt_speech_ids` + `completion_truth` + `prompt_wav_path` + `language` + `prompt_transcript` สำหรับ GRPO training
 
 ---
 
@@ -321,7 +322,7 @@
 - `SimilarityRewardFunc`: decode → **ECAPA-TDNN** speaker embedding → cosine similarity กับ prompt audio → normalize [0,1] — วัดความเหมือนเสียง
 - `RewardFunc` (base): ทุก reward function มี `_decode_audio()` ที่ใช้ codec decoder แปลง generated tokens → wav
 
-**`reward_utils.py`**: transcription ด้วย Whisper, text normalization (Chinese→Simplified, remove punctuation, CER สำหรับ zh/ja/ko), DNSMOS via `torchmetrics`, cosine similarity computation
+**`reward_utils.py`**: transcription ด้วย Whisper, text normalization (Chinese→Simplified, remove punctuation, CER สำหรับ zh/ja/ko/th), DNSMOS via `torchmetrics`, cosine similarity computation
 
 **`ecapa_tdnn.py`**: Third-party ECAPA-TDNN model สำหรับ speaker verification — ใช้ **WavLM-Large** features (s3prl), SE-Res2Blocks, AttentiveStatsPool → speaker embedding vector
 
@@ -462,17 +463,17 @@
 ```python
 filters = [
     filtering.filter_empty_transcript,
-    filtering.filter_non_english,        # ⚠️ HARDCODED!
+    # filter_non_english ถูกลบออกแล้ว ✅
     filtering.filter_long_duration,
     filtering.filter_punct_or_space_only_transcript,
 ]
 ```
 - ฟังก์ชัน `load_samples()` ที่ใช้โดย `data_vectorizer.py` (data preparation step แรก) มี `filter_non_english` **hardcoded** อยู่ในรายการ filter
 - `filter_non_english` คือ: `return "non_english" if sample.language != "en" else None`
-- **ผลกระทบ**: ข้อมูลทุกภาษาที่ไม่ใช่ English จะถูก **กรองทิ้ง** ตอน vectorize — ข้อมูลภาษาไทย, ญี่ปุ่น, จีน ฯลฯ จะไม่ผ่าน
-- **วิธีแก้**: ลบ `filtering.filter_non_english` ออกจาก `load_samples()` หรือเปลี่ยนเป็น configurable filter
+- **ผลกระทบ**: ~~ข้อมูลทุกภาษาที่ไม่ใช่ English จะถูก **กรองทิ้ง** ตอน vectorize~~ → **แก้ไขแล้ว**: ลบ `filter_non_english` ออกจาก `load_samples()` เพื่อรองรับทุกภาษา
+- **สถานะ**: ✅ แก้ไขแล้ว
 
-> ⚡ **หมายเหตุ**: `load_and_filter_audio_codes_and_samples()` (ใช้ตอน training) ไม่มี `filter_non_english` hardcoded — ใช้ `filter_allowed_languages()` จาก config แทน ดังนั้น **กับดักอยู่ที่ขั้นตอน data preparation ไม่ใช่ training**
+> ⚡ **หมายเหตุ**: `load_and_filter_audio_codes_and_samples()` (ใช้ตอน training) ใช้ `filter_allowed_languages()` จาก config แทน ดังนั้นการควบคุมภาษายังทำได้ผ่าน `allowed_languages` ใน config JSON
 
 ### 🚫 Hardcoded Trap #2: Vocab Size ล็อคที่ 193,856
 
@@ -612,43 +613,45 @@ if not project_name:
 
 ## 🌐 ข้อจำกัดด้านภาษา (Language Limitations)
 
-### Text Normalization — รองรับ 6 ภาษาเท่านั้น
+### Text Normalization — รองรับ 7 ภาษา
 
 **ไฟล์**: `tts/data/text_normalization.py`
 ```python
-_supported_languages = ["en", "ja", "zh", "es", "fr", "de"]
+_supported_languages = ["en", "ja", "zh", "es", "fr", "de", "th"]
 ```
-- NeMo Text Normalizer รองรับเฉพาะ: English, Japanese, Chinese, Spanish, French, German
-- ภาษาอื่น (เช่น Thai, Korean, Arabic) → `normalize_with_language()` จะ **return text เดิม** โดยไม่ normalize
+- NeMo Text Normalizer รองรับ 6 ภาษา: English, Japanese, Chinese, Spanish, French, German
+- **Thai** ใช้ `pythainlp` (`pythainlp.util.normalize` + `num_to_thaiword`) แทน NeMo — รองรับ normalization ตัวอักษรไทยและแปลงตัวเลขเป็นคำไทย
+- ภาษาอื่น (เช่น Korean, Arabic) → `normalize_with_language()` จะ **return text เดิม** โดยไม่ normalize
 - **ผลกระทบ**: ตัวเลข, ตัวย่อ, สัญลักษณ์ ในภาษาที่ไม่รองรับจะไม่ถูกแปลง → LLM อาจออกเสียงผิด
 
-### Language Detection — 7 ภาษา (เพิ่ม Korean สำหรับ detection)
+### Language Detection — 8 ภาษา
 
-**ไฟล์**: `tts/data/text_normalization.py` บรรทัด 74-82
+**ไฟล์**: `tts/data/text_normalization.py`
 ```python
 self.lang_detector = lingua.LanguageDetectorBuilder.from_languages(
-    lingua.Language.KOREAN,    # detect ได้แต่ไม่มี normalizer!
+    lingua.Language.KOREAN,    # detect ได้แต่ไม่มี normalizer
     lingua.Language.JAPANESE,
     lingua.Language.CHINESE,
     lingua.Language.ENGLISH,
     lingua.Language.SPANISH,
     lingua.Language.FRENCH,
     lingua.Language.GERMAN,
+    lingua.Language.THAI,      # ✅ detect + normalize ด้วย pythainlp
 ).build()
 ```
-- Language detector รองรับ 7 ภาษา (เพิ่ม Korean) แต่ Korean ไม่มี normalizer → detect ได้ แต่ fall through ไป `return text` (ไม่ normalize)
+- Language detector รองรับ 8 ภาษา — Korean ไม่มี normalizer → detect ได้ แต่ fall through ไป `return text`
 
-### English-only Bias ใน Data Pipeline
+### ~~English-only Bias ใน Data Pipeline~~ (แก้ไขแล้ว)
 
-- `load_samples()` (data_utils.py) → hardcoded `filter_non_english` (กับดัก #1)
-- `filter_non_english` (filtering.py) → `sample.language != "en"` → ทิ้ง
-- `convert_to_ascii()` ใน NemoTextNormalizer → ใช้ `unidecode` แปลง Unicode เป็น ASCII **เฉพาะ English** → ภาษาอื่นจะไม่ถูก convert
+- ~~`load_samples()` (data_utils.py) → hardcoded `filter_non_english`~~ → **ลบออกแล้ว** ข้อมูลทุกภาษาผ่าน vectorization ได้
+- `convert_to_ascii()` ใน NemoTextNormalizer → ใช้ `unidecode` แปลง Unicode เป็น ASCII **เฉพาะ English** → ภาษาอื่นจะไม่ถูก convert (เป็นพฤติกรรมที่ถูกต้อง)
 
-### RLHF WER Reward — ออกแบบมาเน้น English
+### RLHF WER/CER Reward — รองรับหลายภาษา
 
 **ไฟล์**: `tts/training/rlhf/reward_utils.py`
-- WER reward ใช้ `openai-whisper` large-v3 — รองรับหลายภาษา แต่ text normalization ใน reward_utils ออกแบบมาสำหรับ English (remove punctuation, lowercase) กับ CJK (CER)
-- สำหรับ Thai จะต้องใช้ CER แทน WER เนื่องจากไม่มี word boundary
+- WER reward ใช้ `openai-whisper` large-v3 — รองรับหลายภาษา
+- CER ใช้สำหรับภาษาที่ไม่มี word boundary: `["zh", "ja", "ko", "th"]` (เพิ่ม Thai แล้ว)
+- RLHF dataset (`rlhf.py`) ส่ง `language` field ไปยัง reward functions เพื่อเลือก WER/CER ได้ถูกต้อง
 
 ### RLHF Config ตัวอย่าง — ล็อค English
 
@@ -657,6 +660,7 @@ self.lang_detector = lingua.LanguageDetectorBuilder.from_languages(
 "allowed_languages": ["en"],
 "enable_asr_agreement": true
 ```
+- เปลี่ยน `allowed_languages` เป็น `["en", "th"]` เพื่อรองรับ Thai
 
 ---
 
@@ -686,19 +690,23 @@ self.lang_detector = lingua.LanguageDetectorBuilder.from_languages(
 ## 🔧 คู่มือการบำรุงรักษา: เพิ่มภาษาใหม่
 
 ### ขั้นตอนที่ 1: แก้ Data Pipeline ให้รับภาษาใหม่
-1. **ลบ `filter_non_english`** ออกจาก `tts/data/data_utils.py` บรรทัด 43
+1. ~~**ลบ `filter_non_english`** ออกจาก `tts/data/data_utils.py`~~ ✅ ทำแล้ว
 2. **เพิ่ม language code** ใน dataset `.jsonl` (เช่น `"language": "th"`)
 3. **ตั้ง `allowed_languages`** ใน config JSON (เช่น `["en", "th"]`)
 
 ### ขั้นตอนที่ 2: เพิ่ม Text Normalization (แนะนำ)
 1. **เพิ่ม language code** ใน `_supported_languages` ใน `text_normalization.py`
-2. **สร้าง NeMo Normalizer** สำหรับภาษาใหม่ (หรือสร้าง custom normalizer)
-3. **เพิ่มใน language detector**: เพิ่ม `lingua.Language.THAI` (ตัวอย่าง) ใน `init_lang_detector()`
+2. **สร้าง normalizer** สำหรับภาษาใหม่ (NeMo ถ้ารองรับ หรือ custom เช่น `pythainlp` สำหรับ Thai)
+3. **เพิ่มใน language detector**: เพิ่ม `lingua.Language.XXX` ใน `init_lang_detector()`
 4. **เพิ่ม elif branch** ใน `normalize()` method
+5. **เพิ่ม dependency** ใน `pyproject.toml` ถ้าใช้ library ใหม่
+
+> **ตัวอย่าง Thai**: ใช้ `pythainlp.util.normalize` + `num_to_thaiword` ✅ ทำแล้ว
 
 ### ขั้นตอนที่ 3: ปรับ RLHF Rewards (ถ้าใช้)
-1. **WER reward**: ตรวจสอบว่า Whisper รองรับภาษาใหม่ → อาจต้องใช้ CER แทน WER สำหรับภาษาที่ไม่มี word boundary (เช่น Thai, Chinese, Japanese)
+1. **WER reward**: ตรวจสอบว่า Whisper รองรับภาษาใหม่ → เพิ่มใน `_CER_LANG_LIST` ถ้าภาษาไม่มี word boundary
 2. **Text normalization ใน `reward_utils.py`**: ตรวจสอบ punctuation removal, character normalization
+3. **เพิ่ม `language` + `prompt_transcript`** ใน RLHF dataset output ถ้ายังไม่มี (✅ ทำแล้ว)
 
 ### ขั้นตอนที่ 4: เตรียม Audio Data
 1. Audio ต้อง resample เป็น **16kHz** (ตรงกับ `CODEC_SAMPLE_RATE`)
@@ -707,10 +715,10 @@ self.lang_detector = lingua.LanguageDetectorBuilder.from_languages(
 4. แนะนำให้มี `dnsmos_mos_ovr` score สำหรับ quality filtering
 
 ### ขั้นตอนที่ 5: Vectorize & Train
-1. รัน `data_vectorizer.py` (หลังแก้ filter แล้ว)
+1. รัน `data_vectorizer.py`
 2. รัน `data_merger.py`
 3. ตั้ง config ให้ `allowed_languages` รวมภาษาใหม่
-4. Set `enable_text_normalization: false` ถ้ายังไม่มี normalizer สำหรับภาษานั้น
+4. Set `enable_text_normalization: true` ถ้ามี normalizer สำหรับภาษานั้น (Thai ✅)
 
 ---
 

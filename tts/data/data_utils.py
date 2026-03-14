@@ -40,7 +40,6 @@ def load_samples(
     """Loads samples from a dataset."""
     filters = [
         filtering.filter_empty_transcript,
-        filtering.filter_non_english,
         filtering.filter_long_duration,
         filtering.filter_punct_or_space_only_transcript,
     ]

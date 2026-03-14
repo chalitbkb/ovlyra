@@ -41,6 +41,7 @@ dependencies = [
     "lingua-language-detector==2.0.2",
     "faster-whisper",
     "nemo_text_processing; sys_platform == 'linux'",
+    "pythainlp>=5.0",
     # ML utilities
     "timm",
     "wandb",
