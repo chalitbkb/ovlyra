@@ -352,6 +352,18 @@
 
 ---
 
+## 🧹 `setup/` — Environment Automation
+
+#### `setup_python.sh` — The Project Housekeeper
+- **หน้าที่หลัก**: ล้างบาง (Delete) `.venv` เก่าทิ้ง และสร้างใหม่พร้อมติดตั้ง Library ทั้งหมดแบบ Clean Install (ป้องกันปัญหา Library ตีกัน)
+- **Features**:
+  - บังคับใช้ **Python 3.10** + **uv** (Package manager ใหม่ที่เร็วกว่า pip แบบก้าวกระโดด)
+  - **Cross-Platform**: เช็คว่าเป็น Mac (ลง PyTorch แบบ CPU-only) หรือ Linux/Windows (ลง PyTorch แบบมี CUDA) อัตโนมัติ
+  - **Auto-Config CUDA**: เลือกโหลด PyTorch เวอร์ชั่นที่ตรงกับ CUDA (12.4 หรือ 12.8) 
+  - **Flash-Attention Shortcut**: โหลด Flash-Attention รุ่น Prebuilt (สำเร็จรูป) มาลงให้ทันที ช่วยประหยัดเวลา Compile จาก 30 นาทีเหลือ 10 วินาที (เฉพาะ Linux)
+
+---
+
 ## 🛠️ `tools/` — CLI Utilities
 
 #### `data/data_vectorizer.py` — Batch Audio Encoder
