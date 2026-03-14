@@ -7,7 +7,7 @@ Thank you for your interest in contributing to TTS! We welcome contributions fro
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
    ```bash
-   git clone https://github.com/inworld-ai/tts.git
+   git clone https://github.com/chalitbkb/ovlyra.git
    cd tts
    ```
 3. **Set up development environment**:

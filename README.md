@@ -1,6 +1,6 @@
 # Inworld Text-To-Speech Trainer
 
-[![Lint Code](https://github.com/inworld-ai/tts/actions/workflows/linter.yaml/badge.svg)](https://github.com/inworld-ai/tts/actions/workflows/linter.yaml)
+[![Lint Code](https://chalitbkb/ovlyra/actions/workflows/linter.yaml/badge.svg)](https://chalitbkb/ovlyra/actions/workflows/linter.yaml)
 [![Python 3.10](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![CUDA Support](https://img.shields.io/badge/CUDA-12.4%20%7C%2012.8-green.svg)](https://developer.nvidia.com/cuda-toolkit)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.6%20%7C%202.7-orange.svg)](https://pytorch.org/)
@@ -403,7 +403,7 @@ make version patch  # Bump patch version (1.0.0 → 1.0.1), also support `minor`
 ### Development Workflow
 
 ```bash
-git clone https://github.com/inworld-ai/tts.git
+git clone https://chalitbkb/ovlyra.git
 cd tts
 
 # Set up development environment
@@ -437,5 +437,5 @@ We welcome contributions! Please see our contributing guidelines:
 
 ## Support
 
-* **Bug Reports**: [GitHub Issues](https://github.com/inworld-ai/tts/issues)
+* **Bug Reports**: [GitHub Issues](https://chalitbkb/ovlyra/issues)
 * **General Questions**: For general inquiries and support, please [email us](mailto:opensource@inworld.ai)
