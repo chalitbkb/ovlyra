@@ -1,0 +1,71 @@
+{
+    "training": {
+        "seed": 777,
+        "train_val_split": 0.999,
+        "logging_steps": 50,
+        "eval_steps": 5000,
+        "gradient_accumulation_steps": 2,
+        "gradient_clip_value": 1.0,
+        "learning_rate": 1e-06,
+        "betas": [
+            0.9,
+            0.999
+        ],
+        "warmup_ratio": 0,
+        "batch_size": 4,
+        "weight_decay": 0.1,
+        "precision": "bf16",
+        "strategy": "ddp",
+        "gradient_checkpointing": false,
+        "num_workers": 1
+    },
+    "modeling": {
+        "parameters": {
+            "hf_cache_dir": null,
+            "codebook_size": 65536,
+            "max_seq_len": 2048,
+            "model_name": "meta-llama/Llama-3.2-1B-Instruct",
+            "enable_text_normalization": false
+        }
+    },
+    "checkpointing": {
+        "save_steps": 1000,
+        "collect_health_stats": false,
+        "save_intermediate_generations": true,
+        "keep_only_last_n_checkpoints": 5,
+        "only_load_model_weights": false
+    },
+    "train_weighted_datasets": {
+        "/path/to/your/train/dataset": 1.0
+    },
+    "val_weighted_datasets": {
+        "/path/to/your/val/dataset": 1.0
+    },
+    "rlhf_training": {
+        "base_model_dir": "/path/to/your/base/model",
+        "top_p": 0.9,
+        "top_k": 75,
+        "repetition_penalty": 1.1,
+        "temperature": 1.1,
+        "num_generations": 8,
+        "max_prompt_length": 1024,
+        "max_completion_length": 1024,
+        "min_completion_length": 25,
+        "use_vllm": true,
+        "reward_funcs": ["WERRewardFunc"],
+        "reward_weights": [1.0],
+        "save_completions_steps": 50,
+        "per_device_train_batch_size": 4,
+        "num_iterations": 1,
+        "scale_rewards": false,
+        "kl_beta": 0.04
+    },
+    "dataset": {
+        "randomize_slider": 0,
+        "allowed_languages": ["en"],
+        "min_dnsmos_score": 0,
+        "min_sample_rate": 0,
+        "enable_asr_agreement": true,
+        "enable_rlhf_training": true
+    }
+}

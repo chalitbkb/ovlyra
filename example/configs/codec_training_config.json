@@ -1,0 +1,58 @@
+{
+    "training": {
+        "seed": 777,
+        "logging_steps": 100,
+        "eval_steps": 200,
+        "gradient_accumulation_steps": 1,
+        "gradient_clip_value": 1.0,
+        "learning_rate": 1e-04,
+        "betas": [
+            0.8,
+            0.9
+        ],
+        "warmup_ratio": 0.1,
+        "batch_size": 32,
+        "weight_decay": 0.1,
+        "precision": "32-true",
+        "strategy": "ddp",
+        "gradient_checkpointing": false,
+        "num_workers": 1
+    },
+    "modeling": {
+        "parameters": {}
+    },
+    "codec": {
+        "audio_window_size": 192000,
+        "sample_rate": 48000,
+        "hop_length": 160,
+        "minimum_data_sample_rate": 32000,
+        "upsample_factors": [
+            3,
+            2
+        ],
+        "kernel_sizes": [
+            7,
+            6
+        ]
+    },
+    "checkpointing": {
+        "save_steps": 50,
+        "collect_health_stats": false,
+        "save_intermediate_generations": true,
+        "keep_only_last_n_checkpoints": 5,
+        "only_load_model_weights": false
+    },
+    "train_weighted_datasets": {
+        "/path/to/your/vectorized_dataset": 1.0
+    },
+    "val_weighted_datasets": {
+        "/path/to/your/vectorized_dataset": 1.0
+    },
+    "dataset": {
+        "randomize_slider": 0,
+        "allowed_languages": [],
+        "min_dnsmos_score": 0,
+        "min_sample_rate": 0,
+        "enable_rlhf_training": false
+    }
+}

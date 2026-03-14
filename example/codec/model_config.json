@@ -1,0 +1,7 @@
+{
+    "sample_rate": 16000,
+    "token_rate": 50,
+    "hop_length": 320,
+    "upsample_factors": null,
+    "kernel_sizes": null
+}
