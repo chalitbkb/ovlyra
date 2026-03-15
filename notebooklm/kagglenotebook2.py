@@ -17,8 +17,8 @@
       "cell_type": "markdown",
       "metadata": {},
       "source": [
-        "### 🔑 ส่วนที่ 1: ตั้งค่า Hugging Face และ W&B (Hardcoded)\n",
-        "ใส่ Token ของคุณตรงๆ ในช่องด้านล่าง"
+        "### 📥 ส่วนที่ 1: Clone Ovlyra, ติดตั้ง Libraries, และ Login HF/W&B\n",
+        "ต้องติดตั้ง package ก่อนเรียก `huggingface-cli` หรือ `import wandb` — ไม่งั้นจะ crash!"
       ]
     },
     {
@@ -37,13 +37,27 @@
         "WANDB_PROJECT = \"Thai_TTS_Project\"\n",
         "# =====================================\n",
         "\n",
+        "# ตั้ง env vars ก่อน (ไม่ต้องติดตั้งอะไร)\n",
         "os.environ[\"HF_TOKEN\"] = HF_TOKEN\n",
         "os.environ[\"HUGGING_FACE_HUB_TOKEN\"] = HF_TOKEN\n",
         "os.environ[\"WANDB_API_KEY\"] = WANDB_API_KEY\n",
         "os.environ[\"WANDB_PROJECT\"] = WANDB_PROJECT\n",
         "os.environ[\"USER\"] = \"kaggle\"  # prevent KeyError in wandb setup\n",
         "\n",
-        "subprocess.run([\"huggingface-cli\", \"login\", \"--token\", HF_TOKEN], check=True)\n",
+        "# --- Step 1: Clone repo ---\n",
+        "REPO_URL = \"https://github.com/chalitbkb/Ovlyra.git\"\n",
+        "REPO_DIR = \"/kaggle/working/Ovlyra\"\n",
+        "if not os.path.exists(REPO_DIR):\n",
+        "    subprocess.run([\"git\", \"clone\", REPO_URL, REPO_DIR], check=True)\n",
+        "\n",
+        "# --- Step 2: Install Ovlyra + pythainlp (รวม transformers, wandb, torch etc.) ---\n",
+        "os.chdir(REPO_DIR)\n",
+        "subprocess.run([sys.executable, \"-m\", \"pip\", \"install\", \"-e\", \".\", \"--quiet\"], check=True)\n",
+        "subprocess.run([sys.executable, \"-m\", \"pip\", \"install\", \"pythainlp>=5.0\", \"--quiet\"], check=True)\n",
+        "print(\"✅ Ovlyra + pythainlp installed.\")\n",
+        "\n",
+        "# --- Step 3: Login (ต้องทำหลัง pip install เพราะ huggingface-cli + wandb มาจาก package) ---\n",
+        "subprocess.run([sys.executable, \"-m\", \"huggingface_hub.commands.huggingface_cli\", \"login\", \"--token\", HF_TOKEN], check=True)\n",
         "print(\"✅ Hugging Face logged in.\")\n",
         "\n",
         "import wandb\n",
@@ -55,32 +69,7 @@
       "cell_type": "markdown",
       "metadata": {},
       "source": [
-        "### 📥 ส่วนที่ 2: Clone Ovlyra & ติดตั้ง Libraries"
-      ]
-    },
-    {
-      "cell_type": "code",
-      "execution_count": null,
-      "metadata": {},
-      "outputs": [],
-      "source": [
-        "REPO_URL = \"https://github.com/chalitbkb/Ovlyra.git\"\n",
-        "REPO_DIR = \"/kaggle/working/Ovlyra\"\n",
-        "\n",
-        "if not os.path.exists(REPO_DIR):\n",
-        "    subprocess.run([\"git\", \"clone\", REPO_URL, REPO_DIR], check=True)\n",
-        "\n",
-        "os.chdir(REPO_DIR)\n",
-        "subprocess.run([sys.executable, \"-m\", \"pip\", \"install\", \"-e\", \".\", \"--quiet\"], check=True)\n",
-        "subprocess.run([sys.executable, \"-m\", \"pip\", \"install\", \"pythainlp>=5.0\", \"--quiet\"], check=True)\n",
-        "print(\"✅ Ovlyra + pythainlp installed.\")"
-      ]
-    },
-    {
-      "cell_type": "markdown",
-      "metadata": {},
-      "source": [
-        "### 🛠️ ส่วนที่ 3: T4 Compatibility Patches\n",
+        "### 🛠️ ส่วนที่ 2: T4 Compatibility Patches\n",
         "การ์ดจอ T4 มีข้อจำกัดที่ต้องแก้ก่อนรัน:\n",
         "1. ไม่รองรับ **flash_attention_2** → แก้เป็น `sdpa` ใน modeling.py\n",
         "2. environment.py จะ crash ถ้าไม่มี flash_attn → ลบ check ออก"
@@ -109,8 +98,8 @@
         "with open(env_path, \"r\") as f:\n",
         "    env_code = f.read()\n",
         "env_code = env_code.replace(\n",
-        "    'if not transformers_utils.is_flash_attn_2_available():\\n            raise ValueError(\"Flash attention 2 is not available! Install it!\")',\n",
-        "    '# [PATCHED] Flash attention check disabled for T4 compatibility\\n            pass'\n",
+        "    'if not transformers_utils.is_flash_attn_2_available():',\n",
+        "    'if False:  # [PATCHED] Disabled for T4 compatibility'\n",
         ")\n",
         "with open(env_path, \"w\") as f:\n",
         "    f.write(env_code)\n",
@@ -119,7 +108,7 @@
         "import torch\n",
         "gpu_count = torch.cuda.device_count()\n",
         "for i in range(gpu_count):\n",
-        "    print(f\"  GPU {i}: {torch.cuda.get_device_name(i)} ({torch.cuda.get_device_properties(i).total_mem / 1e9:.1f} GB)\")\n",
+        "    print(f\"  GPU {i}: {torch.cuda.get_device_name(i)} ({torch.cuda.get_device_properties(i).total_memory / 1e9:.1f} GB)\")\n",
         "print(f\"💡 Total GPUs: {gpu_count}\")"
       ]
     },
@@ -127,7 +116,7 @@
       "cell_type": "markdown",
       "metadata": {},
       "source": [
-        "### ⚙️ ส่วนที่ 4: สร้างไฟล์ Configuration (JSON)\n",
+        "### ⚙️ ส่วนที่ 3: สร้างไฟล์ Configuration (JSON)\n",
         "Config นี้ต้องตรงตามโครงสร้าง `ExperimentConfig` ใน `configuration.py` ทุกประการ:\n",
         "- 🔑 **ต้องมี**: `training`, `modeling`, `checkpointing`, `train_weighted_datasets`, `val_weighted_datasets`\n",
         "- 🔑 **modeling ต้องอยู่ใน `parameters`**: `codebook_size`, `model_name`, `max_seq_len`\n",
@@ -214,7 +203,7 @@
       "cell_type": "markdown",
       "metadata": {},
       "source": [
-        "### 🏃‍♂️ ส่วนที่ 5: เริ่มต้นกระบวนการ Training\n",
+        "### 🏃‍♂️ ส่วนที่ 4: เริ่มต้นกระบวนการ Training\n",
         "ใช้คำสั่ง `torchrun` เพื่อกระตุ้น GPU ทั้ง 2 ใบให้ทำงานประสานกัน\n",
         "\n",
         "- `--experiment_dir` = ที่เก็บ checkpoint (main.py จะสร้าง subdirectory ตาม `--run_name`)\n",
@@ -242,7 +231,7 @@
       "cell_type": "markdown",
       "metadata": {},
       "source": [
-        "### 💾 ส่วนที่ 6: Convert Checkpoint เป็น Safetensors สำหรับเสิร์ฟ\n",
+        "### 💾 ส่วนที่ 5: Convert Checkpoint เป็น Safetensors สำหรับเสิร์ฟ\n",
         "รวม LoRA Adapter เข้ากับ Base Model (Merge) เพื่อให้แชร์แล้วใช้ต่อได้ง่าย\n",
         "\n",
         "checkpoint directory จะอยู่ที่ `/kaggle/working/experiments/th-sft-t4/`"
