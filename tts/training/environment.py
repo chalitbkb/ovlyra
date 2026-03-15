@@ -57,8 +57,14 @@ def _init_hardware(local_rank: int) -> torch.device:
 
 def _get_fabric_precision(training_precision: str) -> str:
     """Returns the precision to use for the lightning fabric."""
-    if training_precision == "bf16":
-        return "bf16-true"
+    precision_map = {
+        "bf16": "bf16-true",
+        "bf16-mixed": "bf16-mixed",
+        "fp16": "16-true",
+        "16-mixed": "16-mixed",
+    }
+    if training_precision in precision_map:
+        return precision_map[training_precision]
 
     raise ValueError(f"Unsupported precision: {training_precision}")
 

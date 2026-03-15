@@ -1,0 +1,302 @@
+{
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "# 🚀 🇹🇭 เทรนโมเดล Ovlyra เสียงภาษาไทยบน Kaggle [Dual-T4 Optimized]\n",
+        "\n",
+        "**สมมติฐานสำคัญ**: Notebook นี้ใช้ Output (Data Vectorized) จาก `kagglenotebook1` ที่ถูก Add เข้ามาเป็น Input Data เรียบร้อยแล้ว\n",
+        "\n",
+        "เราจะทำการเทรนโมเดลแบบ **SFT** (Supervised Fine-Tuning) โดยใช้เทคนิค LoRA, DDP + 16-mixed precision (FP16 Native บน T4), และ **Patch FlashAttention2 → SDPA**\n",
+        "\n",
+        "**หมายเหตุ**: vLLM ถูกใช้เฉพาะ RLHF training เท่านั้น ไม่ได้ใช้ใน SFT pipeline นี้"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "### 🔑 ส่วนที่ 1: ตั้งค่า Hugging Face และ W&B (Hardcoded)\n",
+        "ใส่ Token ของคุณตรงๆ ในช่องด้านล่าง"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "import os\n",
+        "import subprocess\n",
+        "import sys\n",
+        "\n",
+        "# ===== ✏️ ใส่ Token ของคุณตรงนี้ =====\n",
+        "HF_TOKEN = \"hf_YourHuggingFaceTokenHere\"\n",
+        "WANDB_API_KEY = \"YourWandBApiKeyHere\"\n",
+        "WANDB_PROJECT = \"Thai_TTS_Project\"\n",
+        "# =====================================\n",
+        "\n",
+        "os.environ[\"HF_TOKEN\"] = HF_TOKEN\n",
+        "os.environ[\"HUGGING_FACE_HUB_TOKEN\"] = HF_TOKEN\n",
+        "os.environ[\"WANDB_API_KEY\"] = WANDB_API_KEY\n",
+        "os.environ[\"WANDB_PROJECT\"] = WANDB_PROJECT\n",
+        "os.environ[\"USER\"] = \"kaggle\"  # prevent KeyError in wandb setup\n",
+        "\n",
+        "subprocess.run([\"huggingface-cli\", \"login\", \"--token\", HF_TOKEN], check=True)\n",
+        "print(\"✅ Hugging Face logged in.\")\n",
+        "\n",
+        "import wandb\n",
+        "wandb.login(key=WANDB_API_KEY)\n",
+        "print(\"✅ W&B logged in.\")"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "### 📥 ส่วนที่ 2: Clone Ovlyra & ติดตั้ง Libraries"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "REPO_URL = \"https://github.com/chalitbkb/Ovlyra.git\"\n",
+        "REPO_DIR = \"/kaggle/working/Ovlyra\"\n",
+        "\n",
+        "if not os.path.exists(REPO_DIR):\n",
+        "    subprocess.run([\"git\", \"clone\", REPO_URL, REPO_DIR], check=True)\n",
+        "\n",
+        "os.chdir(REPO_DIR)\n",
+        "subprocess.run([sys.executable, \"-m\", \"pip\", \"install\", \"-e\", \".\", \"--quiet\"], check=True)\n",
+        "subprocess.run([sys.executable, \"-m\", \"pip\", \"install\", \"pythainlp>=5.0\", \"--quiet\"], check=True)\n",
+        "print(\"✅ Ovlyra + pythainlp installed.\")"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "### 🛠️ ส่วนที่ 3: T4 Compatibility Patches\n",
+        "การ์ดจอ T4 มีข้อจำกัดที่ต้องแก้ก่อนรัน:\n",
+        "1. ไม่รองรับ **flash_attention_2** → แก้เป็น `sdpa` ใน modeling.py\n",
+        "2. environment.py จะ crash ถ้าไม่มี flash_attn → ลบ check ออก"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "# ===== PATCH 1: สลับ FlashAttention2 ไปเป็น SDPA =====\n",
+        "modeling_path = os.path.join(REPO_DIR, \"tts\", \"core\", \"modeling.py\")\n",
+        "with open(modeling_path, \"r\") as f:\n",
+        "    content = f.read()\n",
+        "content = content.replace(\n",
+        "    '_ATTN_IMPLEMENTATION = \"flash_attention_2\"',\n",
+        "    '_ATTN_IMPLEMENTATION = \"sdpa\"'\n",
+        ")\n",
+        "with open(modeling_path, \"w\") as f:\n",
+        "    f.write(content)\n",
+        "print(\"✅ Patch 1: flash_attention_2 → sdpa\")\n",
+        "\n",
+        "# ===== PATCH 2: ลบ flash_attn_2 check ใน environment.py =====\n",
+        "env_path = os.path.join(REPO_DIR, \"tts\", \"training\", \"environment.py\")\n",
+        "with open(env_path, \"r\") as f:\n",
+        "    env_code = f.read()\n",
+        "env_code = env_code.replace(\n",
+        "    'if not transformers_utils.is_flash_attn_2_available():\\n            raise ValueError(\"Flash attention 2 is not available! Install it!\")',\n",
+        "    '# [PATCHED] Flash attention check disabled for T4 compatibility\\n            pass'\n",
+        ")\n",
+        "with open(env_path, \"w\") as f:\n",
+        "    f.write(env_code)\n",
+        "print(\"✅ Patch 2: environment.py flash_attn check disabled\")\n",
+        "\n",
+        "import torch\n",
+        "gpu_count = torch.cuda.device_count()\n",
+        "for i in range(gpu_count):\n",
+        "    print(f\"  GPU {i}: {torch.cuda.get_device_name(i)} ({torch.cuda.get_device_properties(i).total_mem / 1e9:.1f} GB)\")\n",
+        "print(f\"💡 Total GPUs: {gpu_count}\")"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "### ⚙️ ส่วนที่ 4: สร้างไฟล์ Configuration (JSON)\n",
+        "Config นี้ต้องตรงตามโครงสร้าง `ExperimentConfig` ใน `configuration.py` ทุกประการ:\n",
+        "- 🔑 **ต้องมี**: `training`, `modeling`, `checkpointing`, `train_weighted_datasets`, `val_weighted_datasets`\n",
+        "- 🔑 **modeling ต้องอยู่ใน `parameters`**: `codebook_size`, `model_name`, `max_seq_len`\n",
+        "- 🎯 **precision:** 16-mixed (FP16 Native บน T4)"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "import json\n",
+        "\n",
+        "# ===== ✏️ แก้พาธ Input ให้ตรงกับชื่อ Dataset ที่คุณ Add เข้ามา =====\n",
+        "INPUT_DATASET_DIR = \"/kaggle/input/kagglenotebook1\"\n",
+        "VECTORIZED_DIR = f\"{INPUT_DATASET_DIR}/vectorized_th\"\n",
+        "# ==================================================================\n",
+        "\n",
+        "config = {\n",
+        "    \"training\": {\n",
+        "        \"seed\": 42,\n",
+        "        \"logging_steps\": 10,\n",
+        "        \"eval_steps\": 500,\n",
+        "        \"gradient_accumulation_steps\": 4,\n",
+        "        \"gradient_clip_value\": 1.0,\n",
+        "        \"learning_rate\": 1e-4,\n",
+        "        \"betas\": [0.9, 0.95],\n",
+        "        \"warmup_ratio\": 0.05,\n",
+        "        \"batch_size\": 1,\n",
+        "        \"weight_decay\": 0.01,\n",
+        "        \"precision\": \"16-mixed\",\n",
+        "        \"strategy\": \"ddp\",\n",
+        "        \"gradient_checkpointing\": True,\n",
+        "        \"num_workers\": 2\n",
+        "    },\n",
+        "    \"modeling\": {\n",
+        "        \"parameters\": {\n",
+        "            \"codebook_size\": 65536,\n",
+        "            \"max_seq_len\": 2048,\n",
+        "            \"model_name\": \"meta-llama/Llama-3.2-1B-Instruct\",\n",
+        "            \"enable_text_normalization\": True\n",
+        "        }\n",
+        "    },\n",
+        "    \"checkpointing\": {\n",
+        "        \"save_steps\": 500,\n",
+        "        \"collect_health_stats\": False,\n",
+        "        \"save_intermediate_generations\": False,\n",
+        "        \"only_load_model_weights\": True,\n",
+        "        \"keep_only_last_n_checkpoints\": 4\n",
+        "    },\n",
+        "    \"train_weighted_datasets\": {\n",
+        "        VECTORIZED_DIR: 1.0\n",
+        "    },\n",
+        "    \"val_weighted_datasets\": {\n",
+        "        VECTORIZED_DIR: 1.0\n",
+        "    },\n",
+        "    \"dataset\": {\n",
+        "        \"allowed_languages\": [\"th\"],\n",
+        "        \"min_dnsmos_score\": 0.0,\n",
+        "        \"min_sample_rate\": 0,\n",
+        "        \"enable_rlhf_training\": False,\n",
+        "        \"min_audio_duration\": 0.5\n",
+        "    },\n",
+        "    \"lora\": {\n",
+        "        \"task_type\": \"CAUSAL_LM\",\n",
+        "        \"r\": 8,\n",
+        "        \"lora_alpha\": 16,\n",
+        "        \"target_modules\": [\"q_proj\", \"v_proj\"],\n",
+        "        \"lora_dropout\": 0.05,\n",
+        "        \"bias\": \"none\"\n",
+        "    }\n",
+        "}\n",
+        "\n",
+        "config_path = os.path.join(REPO_DIR, \"th_sft_t4.json\")\n",
+        "with open(config_path, \"w\") as f:\n",
+        "    json.dump(config, f, indent=2)\n",
+        "\n",
+        "print(f\"✅ Saved config to {config_path}\")\n",
+        "print(f\"📂 Dataset dir: {VECTORIZED_DIR}\")"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "### 🏃‍♂️ ส่วนที่ 5: เริ่มต้นกระบวนการ Training\n",
+        "ใช้คำสั่ง `torchrun` เพื่อกระตุ้น GPU ทั้ง 2 ใบให้ทำงานประสานกัน\n",
+        "\n",
+        "- `--experiment_dir` = ที่เก็บ checkpoint (main.py จะสร้าง subdirectory ตาม `--run_name`)\n",
+        "- `--use_wandb` = เปิดล็อก training metrics ไปที่ Weights & Biases"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "os.chdir(REPO_DIR)\n",
+        "subprocess.run([\n",
+        "    \"torchrun\", \"--nproc_per_node=2\",\n",
+        "    \"tts/training/main.py\",\n",
+        "    \"--config_path=th_sft_t4.json\",\n",
+        "    \"--experiment_dir=/kaggle/working/experiments\",\n",
+        "    \"--run_name=th-sft-t4\",\n",
+        "    \"--use_wandb\"\n",
+        "], check=True)"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "### 💾 ส่วนที่ 6: Convert Checkpoint เป็น Safetensors สำหรับเสิร์ฟ\n",
+        "รวม LoRA Adapter เข้ากับ Base Model (Merge) เพื่อให้แชร์แล้วใช้ต่อได้ง่าย\n",
+        "\n",
+        "checkpoint directory จะอยู่ที่ `/kaggle/working/experiments/th-sft-t4/`"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "import glob\n",
+        "\n",
+        "os.chdir(REPO_DIR)\n",
+        "EXPERIMENT_DIR = \"/kaggle/working/experiments/th-sft-t4\"\n",
+        "\n",
+        "# หา checkpoint ล่าสุด (final_model.pt หรือ checkpoint-N.pt)\n",
+        "final_model = os.path.join(EXPERIMENT_DIR, \"final_model.pt\")\n",
+        "if os.path.exists(final_model):\n",
+        "    model_pt = final_model\n",
+        "    print(f\"⭐ Found final_model.pt\")\n",
+        "else:\n",
+        "    # หา checkpoint เฉพาะ step ล่าสุด\n",
+        "    chkpt_files = glob.glob(os.path.join(EXPERIMENT_DIR, \"checkpoint-*.pt\"))\n",
+        "    if chkpt_files:\n",
+        "        model_pt = sorted(chkpt_files, key=lambda x: int(x.split(\"-\")[-1].replace(\".pt\", \"\")))[-1]\n",
+        "        print(f\"⭐ Found checkpoint: {model_pt}\")\n",
+        "    else:\n",
+        "        model_pt = None\n",
+        "        print(\"❌ ไม่พบ Checkpoint\")\n",
+        "\n",
+        "if model_pt:\n",
+        "    export_dir = \"/kaggle/working/th_sft_merged_model\"\n",
+        "    subprocess.run([\n",
+        "        sys.executable, \"tools/serving/convert_checkpoint.py\",\n",
+        "        f\"--checkpoint_path={model_pt}\",\n",
+        "        f\"--output_path={export_dir}\",\n",
+        "        \"--merge_lora\"\n",
+        "    ], check=True)\n",
+        "    print(f\"\\n🎉 All done! โหลดโฟลเดอร์ {export_dir} ไปรัน Inference ได้เลย!\")"
+      ]
+    }
+  ],
+  "metadata": {
+    "kernelspec": {
+      "display_name": "Python 3",
+      "language": "python",
+      "name": "python3"
+    },
+    "language_info": {
+      "name": "python",
+      "version": "3.10.12"
+    }
+  },
+  "nbformat": 4,
+  "nbformat_minor": 4
+}

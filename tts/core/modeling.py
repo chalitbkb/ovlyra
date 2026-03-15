@@ -22,6 +22,8 @@ def _str_to_torch_dtype(dtype: str) -> torch.dtype:
         "fp16": torch.float16,
         "bf16": torch.bfloat16,
         "int8": torch.int8,
+        "16-mixed": torch.float16,
+        "bf16-mixed": torch.bfloat16,
     }
     if dtype not in str_to_dtype:
         raise ValueError(f"Unknown dtype [{dtype}].")
