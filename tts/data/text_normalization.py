@@ -60,7 +60,10 @@ class NemoTextNormalizer(TextNormalizer):
 
     def __init__(self):
         super().__init__()
-        # Languages supported by NeMo text normalization.
+        # Languages that NeMo text normalization *should* support.
+        # Note: The PyPI version of nemo_text_processing may not have WFST
+        # grammars for all languages (e.g. "ja" is missing in community builds).
+        # We initialize lazily and skip unsupported languages gracefully.
         self._nemo_languages = [
             _ENGLISH,
             _JAPANESE,
@@ -70,10 +73,18 @@ class NemoTextNormalizer(TextNormalizer):
             _GERMAN,
         ]
         self._supported_languages = self._nemo_languages + [_THAI]
-        self._normalize_text = {
-            lang: normalize.Normalizer(input_case="cased", lang=lang)
-            for lang in self._nemo_languages
-        }
+        self._normalize_text = {}
+        for lang in self._nemo_languages:
+            try:
+                self._normalize_text[lang] = normalize.Normalizer(
+                    input_case="cased", lang=lang
+                )
+            except (NotImplementedError, Exception) as e:
+                base_logging.warning(
+                    "NeMo text normalization not available for '%s': %s. "
+                    "Text for this language will be passed through without "
+                    "normalization.", lang, e,
+                )
         self.lang_detector = None
 
     def init_lang_detector(self):
