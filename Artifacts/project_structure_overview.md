@@ -119,7 +119,8 @@
 - **ความสัมพันธ์**: ถูกเรียกจาก `main.py` (SFT training) → tokenizer ที่ได้ถูกส่งต่อไปยัง dataset, model, inference ทุกส่วน
 
 #### `modeling.py` — สร้างและโหลดโมเดล
-- `_construct_model()`: ใช้ `AutoModelForCausalLM.from_pretrained()` โหลด Llama model, ใช้ **Flash Attention 2** (`_ATTN_IMPLEMENTATION`), resize embeddings ให้ตรงกับ tokenizer vocab size (ทั้ง `embed_tokens` และ `lm_head`)
+- `_construct_model()`: ใช้ `AutoModelForCausalLM.from_pretrained()` โหลด Llama model, ใช้ attention implementation ตาม `_ATTN_IMPLEMENTATION` (default: `flash_attention_2`, สามารถเปลี่ยนเป็น `sdpa` สำหรับ GPU ที่ไม่รองรับ Flash Attention เช่น T4), resize embeddings ให้ตรงกับ tokenizer vocab size (ทั้ง `embed_tokens` และ `lm_head`)
+- `_str_to_torch_dtype()`: แปลง precision string → `torch.dtype` — รองรับ: `fp32`, `fp16`, `bf16`, `int8`, **`16-mixed`** (→ float16), **`bf16-mixed`** (→ bfloat16)
 - `build_model()`: wrapper สำหรับ training — ใช้ `fabric.init_module()` สำหรับ DeepSpeed, รองรับ `gradient_checkpointing_enable()` เพื่อลด VRAM
 - `load_model_from_checkpoint()`: โหลดจาก `.pt` checkpoint → (optional) apply LoRA adapter → load state_dict
 - `load_tokenizer_config_and_model()`: โหลด tokenizer + `training_config.json` + model + LoRA config จาก checkpoint directory — ใช้โดย `convert_checkpoint.py`
@@ -294,8 +295,9 @@
 
 #### `environment.py` — Distributed Environment
 - `EnvironmentContext`: encapsulate rank/device/world_size/is_main_process
-- `initialize_distributed_environment_context()`: ตรวจจับ SLURM (`SLURM_PROCID`) หรือ local → init CUDA (tf32=True, cudnn.benchmark=True)
-- `initialize_fabric()`: สร้าง Lightning Fabric ด้วย strategy DDP/FSDP/DeepSpeed, precision (bf16/fp32)
+- `initialize_distributed_environment_context()`: ตรวจจับ SLURM (`SLURM_PROCID`) หรือ local → init CUDA (tf32=True, cudnn.benchmark=True) — ⚠️ มี flash_attn_2 check ที่จะ `raise ValueError` ถ้าไม่มี `flash-attn` package (ต้อง patch ออกสำหรับ GPU ที่ไม่รองรับ)
+- `_get_fabric_precision()`: แปลง precision string → Lightning Fabric format — รองรับ: `bf16` → `bf16-true`, **`bf16-mixed`**, **`fp16`** → `16-true`, **`16-mixed`** (เพิ่มใหม่เพื่อรองรับ T4 GPU)
+- `initialize_fabric()`: สร้าง Lightning Fabric ด้วย strategy DDP/FSDP/DeepSpeed, precision (bf16/fp16/16-mixed/bf16-mixed)
 
 #### `evaluation.py` — Model Evaluation
 - `compute_metrics()`: eval loss บน validation set + optional health stats
@@ -498,15 +500,17 @@ _EXPECTED_VOCAB_SIZE = 193856
 - **ผลกระทบ**: ถ้าเปลี่ยน base model ที่มี vocab size ต่างจาก Llama 3.x จะ error ทันที
 - **วิธีแก้**: เปลี่ยน `_EXPECTED_VOCAB_SIZE` ให้ตรงกับ base model ใหม่ หรือทำให้คำนวณ dynamic
 
-### 🚫 Hardcoded Trap #3: Flash Attention 2 บังคับ
+### 🚫 Hardcoded Trap #3: Flash Attention 2 บังคับ (⚠️ บางส่วนแก้ไขแล้ว)
 
 **ไฟล์**: `tts/core/modeling.py` บรรทัด 15
 ```python
-_ATTN_IMPLEMENTATION = "flash_attention_2"
+_ATTN_IMPLEMENTATION = "flash_attention_2"  # สามารถเปลี่ยนเป็น "sdpa" สำหรับ T4
 ```
-- Model **บังคับ** ใช้ Flash Attention 2 เสมอ — ไม่สามารถเลือก attention implementation อื่นได้
-- **ผลกระทบ**: ต้องมี `flash-attn` package และ GPU ที่รองรับ (Ampere+, CUDA) — ไม่สามารถรันบน CPU หรือ GPU รุ่นเก่า
-- **วิธีแก้**: ทำให้เป็น configurable parameter ใน config JSON
+- Model **default** ใช้ Flash Attention 2 — แต่สามารถเปลี่ยนเป็น `"sdpa"` (Scaled Dot-Product Attention) ได้สำหรับ GPU ที่ไม่รองรับ (เช่น T4 Turing architecture)
+- ⚠️ `environment.py` → `initialize_distributed_environment_context()` ยังคง **บังคับตรวจสอบ** `is_flash_attn_2_available()` และจะ crash ถ้าไม่มี `flash-attn` — ต้อง patch ออกด้วยมือสำหรับ GPU รุ่นเก่า
+- **สถานะ**: 🔶 แก้ไขบางส่วน — ค่า `_ATTN_IMPLEMENTATION` สามารถเปลี่ยนได้แล้ว แต่ environment check ยังต้อง patch
+
+**เพิ่มเติมเรื่อง Precision**: `_str_to_torch_dtype()` ตอนนี้รองรับ `16-mixed` และ `bf16-mixed` แล้ว — สำหรับ GPU ที่ไม่มี native BF16 (เช่น T4) สามารถใช้ `"16-mixed"` (FP16 mixed precision) ซึ่งเร็วกว่า bf16 emulated 2-4 เท่า
 
 ### 🚫 Hardcoded Trap #4: Codec Encoder ล็อคค่าหลายตัว
 
