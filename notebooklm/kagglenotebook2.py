@@ -219,7 +219,7 @@
       "source": [
         "os.chdir(REPO_DIR)\n",
         "subprocess.run([\n",
-        "    \"torchrun\", \"--nproc_per_node=2\",\n",
+        "    \"fabric\", \"run\", f\"--devices={gpu_count}\",\n",
         "    \"tts/training/main.py\",\n",
         "    \"--config_path=th_sft_t4.json\",\n",
         "    \"--experiment_dir=/kaggle/working/experiments\",\n",
