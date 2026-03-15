@@ -57,6 +57,7 @@
         "\n",
         "RAM_DIR = \"/dev/shm/mcv_thai_ram\"\n",
         "os.makedirs(RAM_DIR, exist_ok=True)\n",
+        "os.environ[\"TOKENIZERS_PARALLELISM\"] = \"false\"\n",
         "\n",
         "KAGGLE_WORKING = \"/kaggle/working\"\n",
         "DOWNLOAD_DIR = os.path.join(KAGGLE_WORKING, \"mcv_thai_raw\")\n",

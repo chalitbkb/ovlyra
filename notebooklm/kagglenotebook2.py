@@ -43,6 +43,7 @@
         "os.environ[\"WANDB_API_KEY\"] = WANDB_API_KEY\n",
         "os.environ[\"WANDB_PROJECT\"] = WANDB_PROJECT\n",
         "os.environ[\"USER\"] = \"kaggle\"  # prevent KeyError in wandb setup\n",
+        "os.environ[\"TOKENIZERS_PARALLELISM\"] = \"false\"\n",
         "\n",
         "# --- Step 1: Clone repo ---\n",
         "REPO_URL = \"https://github.com/chalitbkb/Ovlyra.git\"\n",
@@ -223,6 +224,7 @@
         "    \"--config_path=th_sft_t4.json\",\n",
         "    \"--experiment_dir=/kaggle/working/experiments\",\n",
         "    \"--run_name=th-sft-t4\",\n",
+        "    \"--project_name=Thai_TTS_Project\",\n",
         "    \"--use_wandb\"\n",
         "], check=True)"
       ]
