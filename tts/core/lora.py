@@ -43,6 +43,7 @@ def apply_lora(
         target_modules=target_modules,
         lora_dropout=config.lora_dropout,
         bias=config.bias,
+        modules_to_save=config.modules_to_save,
     )
     return peft.get_peft_model(model, peft_config)
 

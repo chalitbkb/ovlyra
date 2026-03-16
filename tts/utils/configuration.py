@@ -215,6 +215,8 @@ class LoraConfig:
     lora_dropout: float
     # The bias type for LoRA.
     bias: str
+    # The modules to save (e.g. for new token embeddings)
+    modules_to_save: list[str] | None = None
     # The path to the adapter weights.
     # If not provided, the adapter will be initialized randomly.
     adapter_path: str | None = None
