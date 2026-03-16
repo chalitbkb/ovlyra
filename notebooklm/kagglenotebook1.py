@@ -12,7 +12,11 @@
         "2. `On-the-fly Tar-Streaming`: แตกไฟล์บนอากาศ (RAM) ไม่เขียนไฟล์ .mp3 ลงดิสก์เลยแม้แต่ไบต์เดียว ลดเวลาแตกไฟล์ทิ้งไป 100%\n",
         "3. `FFmpeg Stdin Pipe`: ปั๊มไบต์เสียงลงคอ FFMPEG โดยตรง ประหยัด I/O ขั้นสุด!\n",
         "---\n",
-        "*🎯 เป้าหมาย:* โฟลเดอร์ `dataset/` จะเต็มไปด้วยไฟล์ `.wav` ความถี่ 24000Hz สำหรับ Ovlyra ภายใน 10 นาที!"
+        "*🎯 เป้าหมาย:* โฟลเดอร์ `dataset/vectorized_th/` จะพร้อมใช้งานสำหรับ Notebook 2 ภายใน 10 นาที!\n",
+        "\n",
+        "**โครงสร้างโฟลเดอร์:**\n",
+        "- `prep/` — ข้อมูลดิบ ชั่วคราว (WAV, JSONL, tar, codec, repo) จะถูกลบทิ้งเมื่อเสร็จ\n",
+        "- `dataset/` — เฉพาะ vectorized output ที่ Notebook 2 ต้องการเท่านั้น"
       ]
     },
     {
@@ -60,9 +64,10 @@
         "os.environ[\"TOKENIZERS_PARALLELISM\"] = \"false\"\n",
         "\n",
         "KAGGLE_WORKING = \"/kaggle/working\"\n",
-        "DOWNLOAD_DIR = os.path.join(KAGGLE_WORKING, \"mcv_thai_raw\")\n",
-        "OUTPUT_WAV_DIR = os.path.join(KAGGLE_WORKING, \"dataset\", \"th_wavs\")\n",
-        "OUTPUT_JSONL = os.path.join(KAGGLE_WORKING, \"dataset\", \"train.jsonl\")\n",
+        "PREP_DIR = os.path.join(KAGGLE_WORKING, \"prep\")\n",
+        "DOWNLOAD_DIR = os.path.join(PREP_DIR, \"mcv_thai_raw\")\n",
+        "OUTPUT_WAV_DIR = os.path.join(PREP_DIR, \"th_wavs\")\n",
+        "OUTPUT_JSONL = os.path.join(PREP_DIR, \"train.jsonl\")\n",
         "\n",
         "TARGET_SAMPLE_RATE = 24000\n",
         "TARGET_CHANNELS = 1\n",
@@ -253,7 +258,7 @@
       "metadata": {},
       "outputs": [],
       "source": [
-        "XCODEC2_DIR = os.path.join(KAGGLE_WORKING, 'xcodec2_ckpt')\n",
+        "XCODEC2_DIR = os.path.join(PREP_DIR, 'xcodec2_ckpt')\n",
         "XCODEC2_PATH = os.path.join(XCODEC2_DIR, 'checkpoint.pt')\n",
         "XCODEC2_URL = 'https://huggingface.co/HKUSTAudio/xcodec2/resolve/main/ckpt/epoch%3D4-step%3D1400000.ckpt'\n",
         "\n",
@@ -329,7 +334,7 @@
         "VAL_SPLIT      = 0.05\n",
         "VEC_BATCH_SIZE  = 16\n",
         "VEC_NUM_WORKERS = 4\n",
-        "VECTORIZED_DIR = os.path.join(KAGGLE_WORKING, 'vectorized_th')\n",
+        "VECTORIZED_DIR = os.path.join(KAGGLE_WORKING, 'dataset', 'vectorized_th')\n",
         "os.makedirs(VECTORIZED_DIR, exist_ok=True)\n",
         "\n",
         "os.chdir(REPO_DIR)\n",
@@ -381,9 +386,22 @@
       "outputs": [],
       "source": [
         "os.chdir(KAGGLE_WORKING)\n",
-        "if os.path.exists(REPO_DIR):\n",
-        "    shutil.rmtree(REPO_DIR)\n",
-        "print('✅ Output พร้อมสำหรับให้ Notebook 2 นำไปเทรนแล้ว!')"
+        "# ลบ prep/ ทั้งหมด (WAV, JSONL, tar, xcodec2, repo) เพื่อประหยัดพื้นที่\n",
+        "if os.path.exists(PREP_DIR):\n",
+        "    shutil.rmtree(PREP_DIR)\n",
+        "    print('🗑️ ลบ prep/ เรียบร้อย — ประหยัดพื้นที่สำหรับ Notebook 2')\n",
+        "\n",
+        "# สรุปสิ่งที่อยู่ใน dataset/\n",
+        "dataset_dir = os.path.join(KAGGLE_WORKING, 'dataset')\n",
+        "for root, dirs, files in os.walk(dataset_dir):\n",
+        "    level = root.replace(dataset_dir, '').count(os.sep)\n",
+        "    indent = ' ' * 2 * level\n",
+        "    print(f'{indent}{os.path.basename(root)}/')\n",
+        "    for f in files[:5]:\n",
+        "        print(f'{indent}  {f}')\n",
+        "    if len(files) > 5:\n",
+        "        print(f'{indent}  ... และอีก {len(files)-5} ไฟล์')\n",
+        "print('\\n✅ Output ใน dataset/ พร้อมสำหรับ Notebook 2 แล้ว!')"
       ]
     }
   ],

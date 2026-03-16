@@ -159,7 +159,7 @@
         "\n",
         "# ===== ✏️ แก้พาธ Input ให้ตรงกับชื่อ Dataset ที่คุณ Add เข้ามา =====\n",
         "INPUT_DATASET_DIR = \"/kaggle/input/kagglenotebook1\"\n",
-        "VECTORIZED_DIR = f\"{INPUT_DATASET_DIR}/vectorized_th\"\n",
+        "VECTORIZED_DIR = f\"{INPUT_DATASET_DIR}/dataset/vectorized_th\"\n",
         "# ==================================================================\n",
         "\n",
         "config = {\n",
