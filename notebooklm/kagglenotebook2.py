@@ -4,21 +4,21 @@
       "cell_type": "markdown",
       "metadata": {},
       "source": [
-        "# 🚀 🇹🇭 เทรนโมเดล Ovlyra เสียงภาษาไทยบน Kaggle [Dual-T4 Optimized]\n",
+        "# \ud83d\ude80 \ud83c\uddf9\ud83c\udded \u0e40\u0e17\u0e23\u0e19\u0e42\u0e21\u0e40\u0e14\u0e25 Ovlyra \u0e40\u0e2a\u0e35\u0e22\u0e07\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22\u0e1a\u0e19 Kaggle [Dual-T4 Optimized]\n",
         "\n",
-        "**สมมติฐานสำคัญ**: Notebook นี้ใช้ Output (Data Vectorized) จาก `kagglenotebook1` ที่ถูก Add เข้ามาเป็น Input Data เรียบร้อยแล้ว\n",
+        "**\u0e2a\u0e21\u0e21\u0e15\u0e34\u0e10\u0e32\u0e19\u0e2a\u0e33\u0e04\u0e31\u0e0d**: Notebook \u0e19\u0e35\u0e49\u0e43\u0e0a\u0e49 Output (Data Vectorized) \u0e08\u0e32\u0e01 `kagglenotebook1` \u0e17\u0e35\u0e48\u0e16\u0e39\u0e01 Add \u0e40\u0e02\u0e49\u0e32\u0e21\u0e32\u0e40\u0e1b\u0e47\u0e19 Input Data \u0e40\u0e23\u0e35\u0e22\u0e1a\u0e23\u0e49\u0e2d\u0e22\u0e41\u0e25\u0e49\u0e27\n",
         "\n",
-        "เราจะทำการเทรนโมเดลแบบ **SFT** (Supervised Fine-Tuning) โดยใช้เทคนิค LoRA, DDP + 16-mixed precision (FP16 Native บน T4), และ **Patch FlashAttention2 → SDPA**\n",
+        "\u0e40\u0e23\u0e32\u0e08\u0e30\u0e17\u0e33\u0e01\u0e32\u0e23\u0e40\u0e17\u0e23\u0e19\u0e42\u0e21\u0e40\u0e14\u0e25\u0e41\u0e1a\u0e1a **SFT** (Supervised Fine-Tuning) \u0e42\u0e14\u0e22\u0e43\u0e0a\u0e49\u0e40\u0e17\u0e04\u0e19\u0e34\u0e04 LoRA, DDP + 16-mixed precision (FP16 Native \u0e1a\u0e19 T4), \u0e41\u0e25\u0e30 **Patch FlashAttention2 \u2192 SDPA**\n",
         "\n",
-        "**หมายเหตุ**: vLLM ถูกใช้เฉพาะ RLHF training เท่านั้น ไม่ได้ใช้ใน SFT pipeline นี้"
+        "**\u0e2b\u0e21\u0e32\u0e22\u0e40\u0e2b\u0e15\u0e38**: vLLM \u0e16\u0e39\u0e01\u0e43\u0e0a\u0e49\u0e40\u0e09\u0e1e\u0e32\u0e30 RLHF training \u0e40\u0e17\u0e48\u0e32\u0e19\u0e31\u0e49\u0e19 \u0e44\u0e21\u0e48\u0e44\u0e14\u0e49\u0e43\u0e0a\u0e49\u0e43\u0e19 SFT pipeline \u0e19\u0e35\u0e49"
       ]
     },
     {
       "cell_type": "markdown",
       "metadata": {},
       "source": [
-        "### 📥 ส่วนที่ 1: Clone Ovlyra, ติดตั้ง Libraries, และ Login HF/W&B\n",
-        "ต้องติดตั้ง package ก่อนเรียก `huggingface-cli` หรือ `import wandb` — ไม่งั้นจะ crash!"
+        "### \ud83d\udce5 \u0e2a\u0e48\u0e27\u0e19\u0e17\u0e35\u0e48 1: Clone Ovlyra, \u0e15\u0e34\u0e14\u0e15\u0e31\u0e49\u0e07 Libraries, \u0e41\u0e25\u0e30 Login HF/W&B\n",
+        "\u0e15\u0e49\u0e2d\u0e07\u0e15\u0e34\u0e14\u0e15\u0e31\u0e49\u0e07 package \u0e01\u0e48\u0e2d\u0e19\u0e40\u0e23\u0e35\u0e22\u0e01 `huggingface-cli` \u0e2b\u0e23\u0e37\u0e2d `import wandb` \u2014 \u0e44\u0e21\u0e48\u0e07\u0e31\u0e49\u0e19\u0e08\u0e30 crash!"
       ]
     },
     {
@@ -31,13 +31,13 @@
         "import subprocess\n",
         "import sys\n",
         "\n",
-        "# ===== ✏️ ใส่ Token ของคุณตรงนี้ =====\n",
+        "# ===== \u270f\ufe0f \u0e43\u0e2a\u0e48 Token \u0e02\u0e2d\u0e07\u0e04\u0e38\u0e13\u0e15\u0e23\u0e07\u0e19\u0e35\u0e49 =====\n",
         "HF_TOKEN = \"hf_YourHuggingFaceTokenHere\"\n",
         "WANDB_API_KEY = \"YourWandBApiKeyHere\"\n",
         "WANDB_PROJECT = \"Thai_TTS_Project\"\n",
         "# =====================================\n",
         "\n",
-        "# ตั้ง env vars ก่อน (ไม่ต้องติดตั้งอะไร)\n",
+        "# \u0e15\u0e31\u0e49\u0e07 env vars \u0e01\u0e48\u0e2d\u0e19 (\u0e44\u0e21\u0e48\u0e15\u0e49\u0e2d\u0e07\u0e15\u0e34\u0e14\u0e15\u0e31\u0e49\u0e07\u0e2d\u0e30\u0e44\u0e23)\n",
         "os.environ[\"HF_TOKEN\"] = HF_TOKEN\n",
         "os.environ[\"HUGGING_FACE_HUB_TOKEN\"] = HF_TOKEN\n",
         "os.environ[\"WANDB_API_KEY\"] = WANDB_API_KEY\n",
@@ -51,29 +51,29 @@
         "if not os.path.exists(REPO_DIR):\n",
         "    subprocess.run([\"git\", \"clone\", REPO_URL, REPO_DIR], check=True)\n",
         "\n",
-        "# --- Step 2: Install Ovlyra + pythainlp (รวม transformers, wandb, torch etc.) ---\n",
+        "# --- Step 2: Install Ovlyra + pythainlp (\u0e23\u0e27\u0e21 transformers, wandb, torch etc.) ---\n",
         "os.chdir(REPO_DIR)\n",
         "subprocess.run([sys.executable, \"-m\", \"pip\", \"install\", \"-e\", \".\", \"--quiet\"], check=True)\n",
         "subprocess.run([sys.executable, \"-m\", \"pip\", \"install\", \"pythainlp>=5.0\", \"--quiet\"], check=True)\n",
-        "print(\"✅ Ovlyra + pythainlp installed.\")\n",
+        "print(\"\u2705 Ovlyra + pythainlp installed.\")\n",
         "\n",
-        "# --- Step 3: Login (ต้องทำหลัง pip install เพราะ huggingface-cli + wandb มาจาก package) ---\n",
+        "# --- Step 3: Login (\u0e15\u0e49\u0e2d\u0e07\u0e17\u0e33\u0e2b\u0e25\u0e31\u0e07 pip install \u0e40\u0e1e\u0e23\u0e32\u0e30 huggingface-cli + wandb \u0e21\u0e32\u0e08\u0e32\u0e01 package) ---\n",
         "subprocess.run([sys.executable, \"-m\", \"huggingface_hub.commands.huggingface_cli\", \"login\", \"--token\", HF_TOKEN], check=True)\n",
-        "print(\"✅ Hugging Face logged in.\")\n",
+        "print(\"\u2705 Hugging Face logged in.\")\n",
         "\n",
         "import wandb\n",
         "wandb.login(key=WANDB_API_KEY)\n",
-        "print(\"✅ W&B logged in.\")"
+        "print(\"\u2705 W&B logged in.\")"
       ]
     },
     {
       "cell_type": "markdown",
       "metadata": {},
       "source": [
-        "### 🛠️ ส่วนที่ 2: T4 Compatibility Patches\n",
-        "การ์ดจอ T4 มีข้อจำกัดที่ต้องแก้ก่อนรัน:\n",
-        "1. ไม่รองรับ **flash_attention_2** → แก้เป็น `sdpa` ใน modeling.py\n",
-        "2. environment.py จะ crash ถ้าไม่มี flash_attn → ลบ check ออก"
+        "### \ud83d\udee0\ufe0f \u0e2a\u0e48\u0e27\u0e19\u0e17\u0e35\u0e48 2: T4 Compatibility Patches\n",
+        "\u0e01\u0e32\u0e23\u0e4c\u0e14\u0e08\u0e2d T4 \u0e21\u0e35\u0e02\u0e49\u0e2d\u0e08\u0e33\u0e01\u0e31\u0e14\u0e17\u0e35\u0e48\u0e15\u0e49\u0e2d\u0e07\u0e41\u0e01\u0e49\u0e01\u0e48\u0e2d\u0e19\u0e23\u0e31\u0e19:\n",
+        "1. \u0e44\u0e21\u0e48\u0e23\u0e2d\u0e07\u0e23\u0e31\u0e1a **flash_attention_2** \u2192 \u0e41\u0e01\u0e49\u0e40\u0e1b\u0e47\u0e19 `sdpa` \u0e43\u0e19 modeling.py\n",
+        "2. environment.py \u0e08\u0e30 crash \u0e16\u0e49\u0e32\u0e44\u0e21\u0e48\u0e21\u0e35 flash_attn \u2192 \u0e25\u0e1a check \u0e2d\u0e2d\u0e01"
       ]
     },
     {
@@ -82,7 +82,7 @@
       "metadata": {},
       "outputs": [],
       "source": [
-        "# ===== PATCH 1: สลับ FlashAttention2 ไปเป็น SDPA =====\n",
+        "# ===== PATCH 1: \u0e2a\u0e25\u0e31\u0e1a FlashAttention2 \u0e44\u0e1b\u0e40\u0e1b\u0e47\u0e19 SDPA =====\n",
         "modeling_path = os.path.join(REPO_DIR, \"tts\", \"core\", \"modeling.py\")\n",
         "with open(modeling_path, \"r\") as f:\n",
         "    content = f.read()\n",
@@ -92,9 +92,9 @@
         ")\n",
         "with open(modeling_path, \"w\") as f:\n",
         "    f.write(content)\n",
-        "print(\"✅ Patch 1: flash_attention_2 → sdpa\")\n",
+        "print(\"\u2705 Patch 1: flash_attention_2 \u2192 sdpa\")\n",
         "\n",
-        "# ===== PATCH 2: ลบ flash_attn_2 check ใน environment.py =====\n",
+        "# ===== PATCH 2: \u0e25\u0e1a flash_attn_2 check \u0e43\u0e19 environment.py =====\n",
         "env_path = os.path.join(REPO_DIR, \"tts\", \"training\", \"environment.py\")\n",
         "with open(env_path, \"r\") as f:\n",
         "    env_code = f.read()\n",
@@ -104,9 +104,9 @@
         ")\n",
         "with open(env_path, \"w\") as f:\n",
         "    f.write(env_code)\n",
-        "print(\"✅ Patch 2: environment.py flash_attn check disabled\")\n",
+        "print(\"\u2705 Patch 2: environment.py flash_attn check disabled\")\n",
         "\n",
-        "# ===== PATCH 3: แก้ NeMo normalizer crash เมื่อภาษา ja ไม่รองรับ =====\n",
+        "# ===== PATCH 3: \u0e41\u0e01\u0e49 NeMo normalizer crash \u0e40\u0e21\u0e37\u0e48\u0e2d\u0e20\u0e32\u0e29\u0e32 ja \u0e44\u0e21\u0e48\u0e23\u0e2d\u0e07\u0e23\u0e31\u0e1a =====\n",
         "tn_path = os.path.join(REPO_DIR, \"tts\", \"data\", \"text_normalization.py\")\n",
         "with open(tn_path, \"r\") as f:\n",
         "    tn_code = f.read()\n",
@@ -129,24 +129,24 @@
         "tn_code = tn_code.replace(old_init, new_init)\n",
         "with open(tn_path, \"w\") as f:\n",
         "    f.write(tn_code)\n",
-        "print(\"✅ Patch 3: NeMo normalizer → graceful fallback for unsupported languages\")\n",
+        "print(\"\u2705 Patch 3: NeMo normalizer \u2192 graceful fallback for unsupported languages\")\n",
         "\n",
         "import torch\n",
         "gpu_count = torch.cuda.device_count()\n",
         "for i in range(gpu_count):\n",
         "    print(f\"  GPU {i}: {torch.cuda.get_device_name(i)} ({torch.cuda.get_device_properties(i).total_memory / 1e9:.1f} GB)\")\n",
-        "print(f\"💡 Total GPUs: {gpu_count}\")"
+        "print(f\"\ud83d\udca1 Total GPUs: {gpu_count}\")"
       ]
     },
     {
       "cell_type": "markdown",
       "metadata": {},
       "source": [
-        "### ⚙️ ส่วนที่ 3: สร้างไฟล์ Configuration (JSON)\n",
-        "Config นี้ต้องตรงตามโครงสร้าง `ExperimentConfig` ใน `configuration.py` ทุกประการ:\n",
-        "- 🔑 **ต้องมี**: `training`, `modeling`, `checkpointing`, `train_weighted_datasets`, `val_weighted_datasets`\n",
-        "- 🔑 **modeling ต้องอยู่ใน `parameters`**: `codebook_size`, `model_name`, `max_seq_len`\n",
-        "- 🎯 **precision:** 16-mixed (FP16 Native บน T4)"
+        "### \u2699\ufe0f \u0e2a\u0e48\u0e27\u0e19\u0e17\u0e35\u0e48 3: \u0e2a\u0e23\u0e49\u0e32\u0e07\u0e44\u0e1f\u0e25\u0e4c Configuration (JSON)\n",
+        "Config \u0e19\u0e35\u0e49\u0e15\u0e49\u0e2d\u0e07\u0e15\u0e23\u0e07\u0e15\u0e32\u0e21\u0e42\u0e04\u0e23\u0e07\u0e2a\u0e23\u0e49\u0e32\u0e07 `ExperimentConfig` \u0e43\u0e19 `configuration.py` \u0e17\u0e38\u0e01\u0e1b\u0e23\u0e30\u0e01\u0e32\u0e23:\n",
+        "- \ud83d\udd11 **\u0e15\u0e49\u0e2d\u0e07\u0e21\u0e35**: `training`, `modeling`, `checkpointing`, `train_weighted_datasets`, `val_weighted_datasets`\n",
+        "- \ud83d\udd11 **modeling \u0e15\u0e49\u0e2d\u0e07\u0e2d\u0e22\u0e39\u0e48\u0e43\u0e19 `parameters`**: `codebook_size`, `model_name`, `max_seq_len`\n",
+        "- \ud83c\udfaf **precision:** 16-mixed (FP16 Native \u0e1a\u0e19 T4)"
       ]
     },
     {
@@ -157,10 +157,30 @@
       "source": [
         "import json\n",
         "\n",
-        "# ===== ✏️ แก้พาธ Input ให้ตรงกับชื่อ Dataset ที่คุณ Add เข้ามา =====\n",
-        "INPUT_DATASET_DIR = \"/kaggle/input/kagglenotebook1\"\n",
-        "VECTORIZED_DIR = f\"{INPUT_DATASET_DIR}/dataset/vectorized_th\"\n",
-        "# ==================================================================\n",
+        "# --- \ud83d\udcc2 Paths & Dataset ---\n",
+        "USER_KAGGLE  = 'dvwebdv'\n",
+        "INPUT_NOTEBOOK_NAME = f'{USER_KAGGLE}/kagglenotebook1'\n",
+        "INPUT_DATASET_DIR = f'/kaggle/input/notebooks/{INPUT_NOTEBOOK_NAME}'\n",
+        "\n",
+        "# --- \ud83d\udd0a Audio Codec & Vectorized Data ---\n",
+        "XCODEC2_DIR  = f'{INPUT_DATASET_DIR}/xcodec2_ckpt'\n",
+        "XCODEC2_PATH = f'{XCODEC2_DIR}/checkpoint.pt'\n",
+        "VECTORIZED_DIR = f'{INPUT_DATASET_DIR}/dataset/vectorized_th'\n",
+        "\n",
+        "# \u2705 \u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a\u0e27\u0e48\u0e32\u0e44\u0e1f\u0e25\u0e4c\u0e1e\u0e23\u0e49\u0e2d\u0e21\u0e43\u0e0a\u0e49 (\u0e2d\u0e48\u0e32\u0e19\u0e08\u0e32\u0e01 Input \u0e15\u0e23\u0e07\u0e46 \u0e44\u0e21\u0e48\u0e15\u0e49\u0e2d\u0e07\u0e04\u0e31\u0e14\u0e25\u0e2d\u0e01!)\n",
+        "if os.path.exists(XCODEC2_PATH):\n",
+        "    size_mb = os.path.getsize(XCODEC2_PATH) / (1024**2)\n",
+        "    print(f'\u2705 xcodec2: {XCODEC2_PATH} ({size_mb:.1f} MB)')\n",
+        "else:\n",
+        "    raise FileNotFoundError(f'\u274c \u0e44\u0e21\u0e48\u0e1e\u0e1a xcodec2: {XCODEC2_PATH}')\n",
+        "\n",
+        "if os.path.exists(VECTORIZED_DIR):\n",
+        "    print(f'\u2705 Vectorized data: {VECTORIZED_DIR}')\n",
+        "else:\n",
+        "    raise FileNotFoundError(f'\u274c \u0e44\u0e21\u0e48\u0e1e\u0e1a Vectorized data: {VECTORIZED_DIR}')\n",
+        "\n",
+        "CODEC_MODEL_PATH = XCODEC2_PATH\n",
+        "print(f'\\n\ud83c\udfaf \u0e17\u0e38\u0e01\u0e2d\u0e22\u0e48\u0e32\u0e07\u0e1e\u0e23\u0e49\u0e2d\u0e21! Codec: {CODEC_MODEL_PATH} | Data: {VECTORIZED_DIR}')\n",
         "\n",
         "config = {\n",
         "    \"training\": {\n",
@@ -221,19 +241,19 @@
         "with open(config_path, \"w\") as f:\n",
         "    json.dump(config, f, indent=2)\n",
         "\n",
-        "print(f\"✅ Saved config to {config_path}\")\n",
-        "print(f\"📂 Dataset dir: {VECTORIZED_DIR}\")"
+        "print(f\"\u2705 Saved config to {config_path}\")\n",
+        "print(f\"\ud83d\udcc2 Dataset dir: {VECTORIZED_DIR}\")"
       ]
     },
     {
       "cell_type": "markdown",
       "metadata": {},
       "source": [
-        "### 🏃‍♂️ ส่วนที่ 4: เริ่มต้นกระบวนการ Training\n",
-        "ใช้คำสั่ง `torchrun` เพื่อกระตุ้น GPU ทั้ง 2 ใบให้ทำงานประสานกัน\n",
+        "### \ud83c\udfc3\u200d\u2642\ufe0f \u0e2a\u0e48\u0e27\u0e19\u0e17\u0e35\u0e48 4: \u0e40\u0e23\u0e34\u0e48\u0e21\u0e15\u0e49\u0e19\u0e01\u0e23\u0e30\u0e1a\u0e27\u0e19\u0e01\u0e32\u0e23 Training\n",
+        "\u0e43\u0e0a\u0e49\u0e04\u0e33\u0e2a\u0e31\u0e48\u0e07 `torchrun` \u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e01\u0e23\u0e30\u0e15\u0e38\u0e49\u0e19 GPU \u0e17\u0e31\u0e49\u0e07 2 \u0e43\u0e1a\u0e43\u0e2b\u0e49\u0e17\u0e33\u0e07\u0e32\u0e19\u0e1b\u0e23\u0e30\u0e2a\u0e32\u0e19\u0e01\u0e31\u0e19\n",
         "\n",
-        "- `--experiment_dir` = ที่เก็บ checkpoint (main.py จะสร้าง subdirectory ตาม `--run_name`)\n",
-        "- `--use_wandb` = เปิดล็อก training metrics ไปที่ Weights & Biases"
+        "- `--experiment_dir` = \u0e17\u0e35\u0e48\u0e40\u0e01\u0e47\u0e1a checkpoint (main.py \u0e08\u0e30\u0e2a\u0e23\u0e49\u0e32\u0e07 subdirectory \u0e15\u0e32\u0e21 `--run_name`)\n",
+        "- `--use_wandb` = \u0e40\u0e1b\u0e34\u0e14\u0e25\u0e47\u0e2d\u0e01 training metrics \u0e44\u0e1b\u0e17\u0e35\u0e48 Weights & Biases"
       ]
     },
     {
@@ -258,10 +278,10 @@
       "cell_type": "markdown",
       "metadata": {},
       "source": [
-        "### 💾 ส่วนที่ 5: Convert Checkpoint เป็น Safetensors สำหรับเสิร์ฟ\n",
-        "รวม LoRA Adapter เข้ากับ Base Model (Merge) เพื่อให้แชร์แล้วใช้ต่อได้ง่าย\n",
+        "### \ud83d\udcbe \u0e2a\u0e48\u0e27\u0e19\u0e17\u0e35\u0e48 5: Convert Checkpoint \u0e40\u0e1b\u0e47\u0e19 Safetensors \u0e2a\u0e33\u0e2b\u0e23\u0e31\u0e1a\u0e40\u0e2a\u0e34\u0e23\u0e4c\u0e1f\n",
+        "\u0e23\u0e27\u0e21 LoRA Adapter \u0e40\u0e02\u0e49\u0e32\u0e01\u0e31\u0e1a Base Model (Merge) \u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e43\u0e2b\u0e49\u0e41\u0e0a\u0e23\u0e4c\u0e41\u0e25\u0e49\u0e27\u0e43\u0e0a\u0e49\u0e15\u0e48\u0e2d\u0e44\u0e14\u0e49\u0e07\u0e48\u0e32\u0e22\n",
         "\n",
-        "checkpoint directory จะอยู่ที่ `/kaggle/working/experiments/th-sft-t4/`"
+        "checkpoint directory \u0e08\u0e30\u0e2d\u0e22\u0e39\u0e48\u0e17\u0e35\u0e48 `/kaggle/working/experiments/th-sft-t4/`"
       ]
     },
     {
@@ -275,20 +295,20 @@
         "os.chdir(REPO_DIR)\n",
         "EXPERIMENT_DIR = \"/kaggle/working/experiments/th-sft-t4\"\n",
         "\n",
-        "# หา checkpoint ล่าสุด (final_model.pt หรือ checkpoint-N.pt)\n",
+        "# \u0e2b\u0e32 checkpoint \u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14 (final_model.pt \u0e2b\u0e23\u0e37\u0e2d checkpoint-N.pt)\n",
         "final_model = os.path.join(EXPERIMENT_DIR, \"final_model.pt\")\n",
         "if os.path.exists(final_model):\n",
         "    model_pt = final_model\n",
-        "    print(f\"⭐ Found final_model.pt\")\n",
+        "    print(f\"\u2b50 Found final_model.pt\")\n",
         "else:\n",
-        "    # หา checkpoint เฉพาะ step ล่าสุด\n",
+        "    # \u0e2b\u0e32 checkpoint \u0e40\u0e09\u0e1e\u0e32\u0e30 step \u0e25\u0e48\u0e32\u0e2a\u0e38\u0e14\n",
         "    chkpt_files = glob.glob(os.path.join(EXPERIMENT_DIR, \"checkpoint-*.pt\"))\n",
         "    if chkpt_files:\n",
         "        model_pt = sorted(chkpt_files, key=lambda x: int(x.split(\"-\")[-1].replace(\".pt\", \"\")))[-1]\n",
-        "        print(f\"⭐ Found checkpoint: {model_pt}\")\n",
+        "        print(f\"\u2b50 Found checkpoint: {model_pt}\")\n",
         "    else:\n",
         "        model_pt = None\n",
-        "        print(\"❌ ไม่พบ Checkpoint\")\n",
+        "        print(\"\u274c \u0e44\u0e21\u0e48\u0e1e\u0e1a Checkpoint\")\n",
         "\n",
         "if model_pt:\n",
         "    export_dir = \"/kaggle/working/th_sft_merged_model\"\n",
@@ -298,7 +318,130 @@
         "        f\"--output_path={export_dir}\",\n",
         "        \"--merge_lora\"\n",
         "    ], check=True)\n",
-        "    print(f\"\\n🎉 All done! โหลดโฟลเดอร์ {export_dir} ไปรัน Inference ได้เลย!\")"
+        "    print(f\"\\n\ud83c\udf89 All done! \u0e42\u0e2b\u0e25\u0e14\u0e42\u0e1f\u0e25\u0e40\u0e14\u0e2d\u0e23\u0e4c {export_dir} \u0e44\u0e1b\u0e23\u0e31\u0e19 Inference \u0e44\u0e14\u0e49\u0e40\u0e25\u0e22!\")"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": [
+        "### \ud83c\udfa4 \u0e2a\u0e48\u0e27\u0e19\u0e17\u0e35\u0e48 6: \u0e17\u0e14\u0e2a\u0e2d\u0e1a\u0e42\u0e04\u0e25\u0e19\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e2a\u0e14! (Inference & Voice Cloning)\n",
+        "\u0e40\u0e27\u0e25\u0e32\u0e41\u0e2b\u0e48\u0e07\u0e04\u0e27\u0e32\u0e21\u0e15\u0e37\u0e48\u0e19\u0e40\u0e15\u0e49\u0e19! \u0e40\u0e23\u0e32\u0e08\u0e30\u0e17\u0e14\u0e2a\u0e2d\u0e1a\u0e42\u0e21\u0e40\u0e14\u0e25\u0e17\u0e35\u0e48\u0e40\u0e1e\u0e34\u0e48\u0e07\u0e40\u0e17\u0e23\u0e19\u0e40\u0e2a\u0e23\u0e47\u0e08\n",
+        "\u0e42\u0e14\u0e22\u0e1b\u0e49\u0e2d\u0e19\u0e44\u0e1f\u0e25\u0e4c\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07\u0e2a\u0e31\u0e49\u0e19\u0e46 (Prompt) + \u0e02\u0e49\u0e2d\u0e04\u0e27\u0e32\u0e21\u0e17\u0e35\u0e48\u0e15\u0e49\u0e2d\u0e07\u0e01\u0e32\u0e23\u0e43\u0e2b\u0e49\u0e1e\u0e39\u0e14\n",
+        "\u0e41\u0e25\u0e49\u0e27\u0e1f\u0e31\u0e07\u0e1c\u0e25\u0e25\u0e31\u0e1e\u0e18\u0e4c\u0e01\u0e31\u0e19\u0e2a\u0e14\u0e46!\n",
+        "\n",
+        "> \ud83d\udca1 **\u0e2a\u0e33\u0e2b\u0e23\u0e31\u0e1a Zero-Shot Voice Cloning:**\n",
+        "> \u0e41\u0e04\u0e48\u0e40\u0e1b\u0e25\u0e35\u0e48\u0e22\u0e19\u0e44\u0e1f\u0e25\u0e4c\u0e40\u0e2a\u0e35\u0e22\u0e07 Prompt \u0e40\u0e1b\u0e47\u0e19\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e02\u0e2d\u0e07\u0e04\u0e19\u0e17\u0e35\u0e48\u0e04\u0e38\u0e13\u0e15\u0e49\u0e2d\u0e07\u0e01\u0e32\u0e23\u0e42\u0e04\u0e25\u0e19 (3-10 \u0e27\u0e34\u0e19\u0e32\u0e17\u0e35)\n",
+        "> \u0e42\u0e21\u0e40\u0e14\u0e25\u0e08\u0e30\u0e40\u0e25\u0e35\u0e22\u0e19\u0e41\u0e1a\u0e1a\u0e2a\u0e33\u0e40\u0e19\u0e35\u0e22\u0e07\u0e41\u0e25\u0e30\u0e42\u0e17\u0e19\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e43\u0e2b\u0e49\u0e2d\u0e31\u0e15\u0e42\u0e19\u0e21\u0e31\u0e15\u0e34!"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "import os\n",
+        "import subprocess\n",
+        "import sys\n",
+        "import shutil\n",
+        "import json as _json\n",
+        "\n",
+        "os.chdir(REPO_DIR)\n",
+        "\n",
+        "# ===== Fix: Kaggle Input is read-only, copy xcodec2 to Working + patch model_config =====\n",
+        "WORKING_CODEC_DIR = '/kaggle/working/xcodec2_ckpt'\n",
+        "if not os.path.exists(WORKING_CODEC_DIR):\n",
+        "    shutil.copytree(XCODEC2_DIR, WORKING_CODEC_DIR)\n",
+        "    print(f'\u2705 Copied xcodec2 to {WORKING_CODEC_DIR}')\n",
+        "config_fix_path = os.path.join(WORKING_CODEC_DIR, 'model_config.json')\n",
+        "with open(config_fix_path, 'r') as f:\n",
+        "    codec_cfg = _json.load(f)\n",
+        "if 'model_type' not in codec_cfg:\n",
+        "    codec_cfg['model_type'] = 'xcodec2'\n",
+        "    with open(config_fix_path, 'w') as f:\n",
+        "        _json.dump(codec_cfg, f, indent=4)\n",
+        "    print('\u2705 Patched model_config.json: added model_type')\n",
+        "CODEC_INFERENCE_PATH = os.path.join(WORKING_CODEC_DIR, 'checkpoint.pt')\n",
+        "\n",
+        "# =============================================================\n",
+        "# \ud83c\udfa7 \u0e40\u0e15\u0e23\u0e35\u0e22\u0e21\u0e44\u0e1f\u0e25\u0e4c\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07\u0e41\u0e25\u0e30\u0e02\u0e49\u0e2d\u0e04\u0e27\u0e32\u0e21\u0e15\u0e49\u0e19\u0e09\u0e1a\u0e31\u0e1a (Prompt)\n",
+        "# \u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07\u0e01\u0e32\u0e23\u0e43\u0e0a\u0e49\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e08\u0e32\u0e01\u0e42\u0e1f\u0e25\u0e40\u0e14\u0e2d\u0e23\u0e4c Dataset \u0e2b\u0e23\u0e37\u0e2d\u0e40\u0e2d\u0e32\u0e44\u0e1f\u0e25\u0e4c\u0e15\u0e31\u0e27\u0e40\u0e2d\u0e07\u0e21\u0e32\u0e27\u0e32\u0e07\u0e01\u0e47\u0e44\u0e14\u0e49\n",
+        "# =============================================================\n",
+        "\n",
+        "# 1. \u0e43\u0e2a\u0e48 Path \u0e02\u0e2d\u0e07\u0e44\u0e1f\u0e25\u0e4c\u0e40\u0e2a\u0e35\u0e22\u0e07 (3-10 \u0e27\u0e34\u0e19\u0e32\u0e17\u0e35 \u0e15\u0e49\u0e19\u0e09\u0e1a\u0e31\u0e1a\u0e04\u0e27\u0e23\u0e0a\u0e31\u0e14\u0e40\u0e08\u0e19 \u0e44\u0e21\u0e48\u0e21\u0e35\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e23\u0e1a\u0e01\u0e27\u0e19)\n",
+        "# \u26a0\ufe0f \u0e41\u0e01\u0e49\u0e1e\u0e32\u0e18\u0e19\u0e35\u0e49\u0e43\u0e2b\u0e49\u0e0a\u0e35\u0e49\u0e44\u0e1b\u0e22\u0e31\u0e07\u0e44\u0e1f\u0e25\u0e4c\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e17\u0e35\u0e48\u0e04\u0e38\u0e13\u0e15\u0e49\u0e2d\u0e07\u0e01\u0e32\u0e23\u0e42\u0e04\u0e25\u0e19\u0e08\u0e23\u0e34\u0e07\u0e46 \u0e2b\u0e23\u0e37\u0e2d\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14\u0e44\u0e1f\u0e25\u0e4c\u0e21\u0e32\u0e27\u0e32\u0e07\u0e17\u0e31\u0e1a\u0e1e\u0e32\u0e18\u0e19\u0e35\u0e49\n",
+        "PROMPT_WAV = f\"/kaggle/working/prep/th_wavs/example.wav\"\n",
+        "# [\u0e2a\u0e33\u0e2b\u0e23\u0e31\u0e1a\u0e40\u0e17\u0e2a\u0e15\u0e4c\u0e40\u0e1a\u0e37\u0e49\u0e2d\u0e07\u0e15\u0e49\u0e19 \u0e40\u0e23\u0e32\u0e43\u0e0a\u0e49\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07\u0e08\u0e32\u0e01 dataset/vectorized_th \u0e1c\u0e48\u0e32\u0e19\u0e44\u0e1f\u0e25\u0e4c jsonl \u0e16\u0e49\u0e32\u0e21\u0e35 \u0e2b\u0e23\u0e37\u0e2d\u0e04\u0e38\u0e13\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e41\u0e01\u0e49\u0e1e\u0e32\u0e18\u0e40\u0e2d\u0e07]\n",
+        "PROMPT_WAV = f\"{INPUT_DATASET_DIR}/my-voice/my_voice.wav\" # \u0e2b\u0e23\u0e37\u0e2d\u0e1e\u0e32\u0e18\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e17\u0e35\u0e48\u0e04\u0e38\u0e13\u0e01\u0e33\u0e2b\u0e19\u0e14\n",
+        "\n",
+        "# 2. \u0e1e\u0e34\u0e21\u0e1e\u0e4c\u0e04\u0e33\u0e17\u0e35\u0e48\u0e1e\u0e39\u0e14\u0e43\u0e19\u0e44\u0e1f\u0e25\u0e4c\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e19\u0e31\u0e49\u0e19\u0e43\u0e2b\u0e49\u0e40\u0e1b\u0e4a\u0e30\u0e17\u0e38\u0e01\u0e04\u0e33\n",
+        "PROMPT_TRANSCRIPTION = \"\u0e17\u0e23\u0e32\u0e19\u0e2a\u0e04\u0e23\u0e34\u0e1b\u0e15\u0e4c\u0e02\u0e2d\u0e07\u0e44\u0e1f\u0e25\u0e4c\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e15\u0e31\u0e27\u0e2d\u0e22\u0e48\u0e32\u0e07 \u0e1e\u0e34\u0e21\u0e1e\u0e4c\u0e43\u0e2b\u0e49\u0e15\u0e23\u0e07\u0e17\u0e38\u0e01\u0e04\u0e33\"\n",
+        "\n",
+        "# 3. \u0e02\u0e49\u0e2d\u0e04\u0e27\u0e32\u0e21\u0e43\u0e2b\u0e21\u0e48\u0e17\u0e35\u0e48\u0e15\u0e49\u0e2d\u0e07\u0e01\u0e32\u0e23\u0e43\u0e2b\u0e49\u0e42\u0e21\u0e40\u0e14\u0e25\u0e1e\u0e39\u0e14\u0e40\u0e25\u0e35\u0e22\u0e19\u0e41\u0e1a\u0e1a\u0e40\u0e2a\u0e35\u0e22\u0e07\n",
+        "TEXT_TO_SPEAK = \"\u0e2a\u0e27\u0e31\u0e2a\u0e14\u0e35\u0e04\u0e23\u0e31\u0e1a \u0e2d\u0e2d\u0e1f\u0e44\u0e25\u0e23\u0e48\u0e32 \u0e42\u0e21\u0e40\u0e14\u0e25\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e20\u0e32\u0e29\u0e32\u0e44\u0e17\u0e22\u0e17\u0e35\u0e48\u0e04\u0e25\u0e49\u0e32\u0e22\u0e18\u0e23\u0e23\u0e21\u0e0a\u0e32\u0e15\u0e34\u0e17\u0e35\u0e48\u0e2a\u0e38\u0e14 \u0e1e\u0e23\u0e49\u0e2d\u0e21\u0e43\u0e0a\u0e49\u0e07\u0e32\u0e19\u0e41\u0e25\u0e49\u0e27\u0e04\u0e23\u0e31\u0e1a!\"\n",
+        "\n",
+        "OUTPUT_WAV = \"/kaggle/working/cloned_voice_output.wav\"\n",
+        "\n",
+        "print(f\"\ud83c\udfb5 Using Custom Prompt Audio: {PROMPT_WAV}\")\n",
+        "print(f\"\ud83d\udcdd Prompt Transcription: {PROMPT_TRANSCRIPTION}\")\n",
+        "print(f\"\ud83d\udcac Text to Speak: {TEXT_TO_SPEAK}\")"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "print(\"\\n\u23f3 \u0e01\u0e33\u0e25\u0e31\u0e07\u0e1b\u0e23\u0e30\u0e21\u0e27\u0e25\u0e1c\u0e25... \u0e2a\u0e23\u0e49\u0e32\u0e07\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e42\u0e04\u0e25\u0e19\u0e34\u0e48\u0e07... (\u0e2d\u0e32\u0e08\u0e43\u0e0a\u0e49\u0e40\u0e27\u0e25\u0e32\u0e1b\u0e23\u0e30\u0e21\u0e32\u0e13 10-30 \u0e27\u0e34\u0e19\u0e32\u0e17\u0e35)\")\n",
+        "\n",
+        "# inference.py \u0e15\u0e49\u0e2d\u0e07\u0e01\u0e32\u0e23 audio_encoder_path \u0e41\u0e25\u0e30 audio_decoder_path \u0e41\u0e22\u0e01\u0e01\u0e31\u0e19\n",
+        "# \u0e15\u0e32\u0e21 README.md: \u0e43\u0e0a\u0e49 xcodec2 checkpoint \u0e40\u0e14\u0e35\u0e22\u0e27\u0e01\u0e31\u0e19\u0e44\u0e14\u0e49\u0e17\u0e31\u0e49\u0e07 encoder \u0e41\u0e25\u0e30 decoder\n",
+        "cmd = [\n",
+        "    sys.executable, \"tools/serving/inference.py\",\n",
+        "    f\"--model_checkpoint_path={export_dir}\",\n",
+        "    f\"--audio_encoder_path={CODEC_INFERENCE_PATH}\",\n",
+        "    f\"--audio_decoder_path={CODEC_INFERENCE_PATH}\",\n",
+        "    f\"--prompt_wav_path={PROMPT_WAV}\",\n",
+        "    f\"--prompt_transcription={PROMPT_TRANSCRIPTION}\",\n",
+        "    f\"--text={TEXT_TO_SPEAK}\",\n",
+        "    f\"--output_path={OUTPUT_WAV}\"\n",
+        "]\n",
+        "\n",
+        "if os.path.exists(export_dir) and os.path.exists(PROMPT_WAV):\n",
+        "    try:\n",
+        "        subprocess.run(cmd, check=True)\n",
+        "        print(f\"\\n\ud83c\udf89 Output saved to: {OUTPUT_WAV}\")\n",
+        "    except subprocess.CalledProcessError as e:\n",
+        "        print(f\"\\n\u274c \u0e40\u0e01\u0e34\u0e14\u0e02\u0e49\u0e2d\u0e1c\u0e34\u0e14\u0e1e\u0e25\u0e32\u0e14\u0e23\u0e30\u0e2b\u0e27\u0e48\u0e32\u0e07\u0e23\u0e31\u0e19 Inference: {e}\")\n",
+        "else:\n",
+        "    if not os.path.exists(export_dir):\n",
+        "        print(f\"\\n\u274c \u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e42\u0e1f\u0e25\u0e40\u0e14\u0e2d\u0e23\u0e4c\u0e42\u0e21\u0e40\u0e14\u0e25: {export_dir}\")\n",
+        "    if not os.path.exists(PROMPT_WAV):\n",
+        "        print(f\"\\n\u274c \u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e44\u0e1f\u0e25\u0e4c\u0e40\u0e2a\u0e35\u0e22\u0e07 Prompt: {PROMPT_WAV}\")\n",
+        "        print(\"\u0e01\u0e23\u0e38\u0e13\u0e32\u0e2d\u0e31\u0e1b\u0e42\u0e2b\u0e25\u0e14\u0e44\u0e1f\u0e25\u0e4c\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e02\u0e36\u0e49\u0e19\u0e21\u0e32 \u0e2b\u0e23\u0e37\u0e2d\u0e41\u0e01\u0e49\u0e1e\u0e32\u0e18 PROMPT_WAV \u0e43\u0e2b\u0e49\u0e0a\u0e35\u0e49\u0e44\u0e1b\u0e22\u0e31\u0e07\u0e44\u0e1f\u0e25\u0e4c\u0e17\u0e35\u0e48\u0e21\u0e35\u0e2d\u0e22\u0e39\u0e48\")"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "# \ud83d\udd0a \u0e40\u0e25\u0e48\u0e19\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e1c\u0e25\u0e25\u0e31\u0e1e\u0e18\u0e4c\u0e43\u0e19 Notebook!\n",
+        "import IPython.display as ipd\n",
+        "\n",
+        "if os.path.exists(OUTPUT_WAV):\n",
+        "    file_size = os.path.getsize(OUTPUT_WAV)\n",
+        "    if file_size > 0:\n",
+        "        print(f\"\ud83c\udfa7 \u0e44\u0e1f\u0e25\u0e4c\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e02\u0e19\u0e32\u0e14: {file_size/1024:.1f} KB\")\n",
+        "        print(\"\u0e01\u0e14\u0e1b\u0e38\u0e48\u0e21 Play \u0e14\u0e49\u0e32\u0e19\u0e25\u0e48\u0e32\u0e07\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e1f\u0e31\u0e07\u0e1c\u0e25\u0e25\u0e31\u0e1e\u0e18\u0e4c!\")\n",
+        "        display(ipd.Audio(OUTPUT_WAV))\n",
+        "    else:\n",
+        "        print(\"\u26a0\ufe0f \u0e44\u0e1f\u0e25\u0e4c\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e27\u0e48\u0e32\u0e07\u0e40\u0e1b\u0e25\u0e48\u0e32! \u0e42\u0e21\u0e40\u0e14\u0e25\u0e2d\u0e32\u0e08\u0e22\u0e31\u0e07\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e40\u0e2a\u0e35\u0e22\u0e07\u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08\")\n",
+        "else:\n",
+        "    print(\"\u274c \u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e44\u0e1f\u0e25\u0e4c\u0e40\u0e2a\u0e35\u0e22\u0e07 output\")"
       ]
     }
   ],

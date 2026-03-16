@@ -258,7 +258,7 @@
       "metadata": {},
       "outputs": [],
       "source": [
-        "XCODEC2_DIR = os.path.join(PREP_DIR, 'xcodec2_ckpt')\n",
+        "XCODEC2_DIR = os.path.join(KAGGLE_WORKING, 'xcodec2_ckpt')\n",
         "XCODEC2_PATH = os.path.join(XCODEC2_DIR, 'checkpoint.pt')\n",
         "XCODEC2_URL = 'https://huggingface.co/HKUSTAudio/xcodec2/resolve/main/ckpt/epoch%3D4-step%3D1400000.ckpt'\n",
         "\n",
@@ -386,7 +386,7 @@
       "outputs": [],
       "source": [
         "os.chdir(KAGGLE_WORKING)\n",
-        "# ลบ prep/ ทั้งหมด (WAV, JSONL, tar, xcodec2, repo) เพื่อประหยัดพื้นที่\n",
+        "# ลบ prep/ ทั้งหมด (WAV, JSONL, tar, repo) เพื่อประหยัดพื้นที่\n",
         "if os.path.exists(PREP_DIR):\n",
         "    shutil.rmtree(PREP_DIR)\n",
         "    print('🗑️ ลบ prep/ เรียบร้อย — ประหยัดพื้นที่สำหรับ Notebook 2')\n",
