@@ -125,6 +125,11 @@ def _synthesize_audio(
     input_ids = input_ids.to(model_device)
     speech_end_id = tokenizer.convert_tokens_to_ids(constants.SPEECH_END_TOKEN)
 
+    logging.info(
+        "[DIAG] Input tokens: %d, Prompt speech_ids: %d, speech_end_id: %d",
+        input_ids.shape[1], len(speech_ids), speech_end_id,
+    )
+
     # Generate the speech autoregressively the classic way.
     transformers.set_seed(inference_settings.seed)
     generated_ids = _generate_speech_tokens(
@@ -135,6 +140,11 @@ def _synthesize_audio(
         use_vllm=use_vllm,
     )
 
+    logging.info(
+        "[DIAG] Generated total tokens: %d (new tokens: %d)",
+        len(generated_ids), len(generated_ids) - input_ids.shape[1],
+    )
+
     # Convert string speech tokens to speech token ids.
     if use_vllm:
         speech_tokens = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
@@ -142,21 +152,56 @@ def _synthesize_audio(
         speech_tokens = torch.tensor(speech_ids + extract_speech_ids(speech_tokens))
     else:
         # Keep only the audio tokens.
-        generated_ids = generated_ids[input_ids.shape[1] - len(speech_ids) : -1]
+        slice_start = input_ids.shape[1] - len(speech_ids)
+        generated_ids = generated_ids[slice_start : -1]
+
+        logging.info(
+            "[DIAG] Sliced tokens [%d:-1]: %d tokens. First 5 token IDs: %s",
+            slice_start, len(generated_ids),
+            generated_ids[:5].tolist() if len(generated_ids) > 0 else [],
+        )
 
         # Extract the speech token strings. Direct use of the output tokens
         # is dangerous, as there might be non-speech tokens in the output.
-        speech_tokens = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-        speech_tokens = torch.tensor(extract_speech_ids(speech_tokens))
+        speech_tokens_str = tokenizer.batch_decode(
+            generated_ids, skip_special_tokens=True
+        )
+        extracted_ids = extract_speech_ids(speech_tokens_str)
+        speech_tokens = torch.tensor(extracted_ids)
+
+        logging.info(
+            "[DIAG] Extracted speech IDs: %d (prompt: %d, new: %d). "
+            "First 10 new IDs: %s",
+            len(extracted_ids), len(speech_ids),
+            len(extracted_ids) - len(speech_ids),
+            extracted_ids[len(speech_ids):len(speech_ids)+10],
+        )
 
     # Decode the speech tokens to speech waveform.
     with custom_logging.Timer() as timer:
         gen_wav = audio_decoder.decode(speech_tokens)
     decoding_time = timer.get_duration()
 
+    logging.info(
+        "[DIAG] Decoded wav shape: %s, min: %.6f, max: %.6f, mean_abs: %.6f",
+        gen_wav.shape, gen_wav.min().item(), gen_wav.max().item(),
+        gen_wav.abs().mean().item(),
+    )
+
     prompt_wav_length = len(speech_ids) / audio_decoder.token_rate
     prompt_wav_length = int(prompt_wav_length * audio_decoder.sample_rate)
-    return gen_wav[:, prompt_wav_length:], decoding_time
+
+    output_wav = gen_wav[:, prompt_wav_length:]
+    logging.info(
+        "[DIAG] After prompt strip (%d samples): shape %s, "
+        "min: %.6f, max: %.6f, mean_abs: %.6f",
+        prompt_wav_length, output_wav.shape,
+        output_wav.min().item() if output_wav.shape[1] > 0 else 0,
+        output_wav.max().item() if output_wav.shape[1] > 0 else 0,
+        output_wav.abs().mean().item() if output_wav.shape[1] > 0 else 0,
+    )
+
+    return output_wav, decoding_time
 
 
 class LocalTtsModel:
