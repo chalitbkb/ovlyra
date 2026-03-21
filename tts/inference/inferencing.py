@@ -69,12 +69,27 @@ def extract_speech_ids_from_text(text: str) -> list[int]:
     return [int(match) for match in re.findall(r"<\|s_(\d+)\|>", text)]
 
 
+class _AllowOnlyTokenIds(transformers.LogitsProcessor):
+    """Restrict generation to a fixed allow-list of token IDs."""
+
+    def __init__(self, allowed_token_ids: list[int]):
+        super().__init__()
+        self._allowed_token_ids = allowed_token_ids
+
+    def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
+        filtered_scores = torch.full_like(scores, -float("inf"))
+        filtered_scores[:, self._allowed_token_ids] = scores[:, self._allowed_token_ids]
+        return filtered_scores
+
+
 @torch.no_grad()
 def _generate_speech_tokens(
     model: transformers.AutoModelForCausalLM | Any,
     input_ids: torch.Tensor,
+    attention_mask: torch.Tensor,
     inference_settings: InferenceSettings,
     speech_end_id: int,
+    allowed_token_ids: list[int] | None = None,
     use_vllm: bool = False,
 ) -> torch.Tensor:
     """Implements actual speech token generation logic."""
@@ -97,12 +112,20 @@ def _generate_speech_tokens(
         )
         return outputs[0].outputs[0].token_ids
 
+    logits_processor = None
+    if allowed_token_ids:
+        logits_processor = transformers.LogitsProcessorList(
+            [_AllowOnlyTokenIds(allowed_token_ids)]
+        )
+
     return (
         model.generate(
             input_ids=input_ids,
+            attention_mask=attention_mask,
             max_new_tokens=inference_settings.max_tokens,
             min_new_tokens=inference_settings.min_tokens,
             eos_token_id=speech_end_id,
+            logits_processor=logits_processor,
             do_sample=True if inference_settings.temperature > 0.0 else False,
             repetition_penalty=inference_settings.repetition_penalty,
             top_p=inference_settings.top_p,
@@ -129,7 +152,14 @@ def _synthesize_audio(
         "input_ids"
     ]
     input_ids = input_ids.to(model_device)
+    attention_mask = torch.ones_like(input_ids, device=model_device)
     speech_end_id = tokenizer.convert_tokens_to_ids(constants.SPEECH_END_TOKEN)
+    # Keep generation in speech-token space + speech_end token.
+    speech_token_ids = [
+        tokenizer.convert_tokens_to_ids(constants.SPEECH_TOKEN_PATTERN.format(i))
+        for i in range(65536)
+    ]
+    allowed_token_ids = [speech_end_id] + [i for i in speech_token_ids if i >= 0]
 
     logging.info(
         "[DIAG] Input tokens: %d, Prompt speech_ids: %d, speech_end_id: %d",
@@ -141,8 +171,10 @@ def _synthesize_audio(
     generated_ids = _generate_speech_tokens(
         model=model,
         input_ids=input_ids,
+        attention_mask=attention_mask,
         inference_settings=inference_settings,
         speech_end_id=speech_end_id,
+        allowed_token_ids=allowed_token_ids,
         use_vllm=use_vllm,
     )
 
