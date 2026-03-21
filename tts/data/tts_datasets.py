@@ -76,6 +76,12 @@ def _build_dataset(
         max_seq_len=max_seq_len,
         prompt_compiler=prompting.TrainingPromptCompiler(),
         text_normalizer=text_normalizer,
+        inference_aligned_sft=dataset_config.inference_aligned_sft,
+        inference_prompt_audio_fraction=dataset_config.inference_prompt_audio_fraction,
+        inference_min_prompt_speech_tokens=dataset_config.inference_min_prompt_speech_tokens,
+        inference_min_continuation_speech_tokens=(
+            dataset_config.inference_min_continuation_speech_tokens
+        ),
     ), dataset_name
 
 
@@ -230,9 +236,14 @@ def merge_datasets(
     split: str,
     pretraining_mode: bool,
     text_normalizer: text_normalization.TextNormalizer,
-    dataset_config: configuration.DatasetConfig,
+    dataset_config: configuration.DatasetConfig | None,
 ) -> torch.utils.data.Dataset:
     """Merges multiple datasets into a single dataset."""
+
+    if dataset_config is None:
+        raise ValueError(
+            "Experiment config is missing a 'dataset' block (required for SFT)."
+        )
 
     logging.info("-*-" * 10 + " %s " + "-*-" * 10, split)
     datasets = []

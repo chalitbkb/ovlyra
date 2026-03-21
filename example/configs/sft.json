@@ -44,6 +44,10 @@
         "allowed_languages": [],
         "min_dnsmos_score": 0,
         "min_sample_rate": 0,
-        "enable_rlhf_training": false
+        "enable_rlhf_training": false,
+        "inference_aligned_sft": false,
+        "inference_prompt_audio_fraction": 0.35,
+        "inference_min_prompt_speech_tokens": 40,
+        "inference_min_continuation_speech_tokens": 40
     }
 }

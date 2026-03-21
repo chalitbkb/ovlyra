@@ -23,6 +23,10 @@ class TtsFineTuningDataset(torch.utils.data.Dataset):
         max_seq_len: int,
         prompt_compiler: prompting.PromptCompiler,
         text_normalizer: text_normalization.TextNormalizer,
+        inference_aligned_sft: bool = False,
+        inference_prompt_audio_fraction: float = 0.35,
+        inference_min_prompt_speech_tokens: int = 40,
+        inference_min_continuation_speech_tokens: int = 40,
     ):
         self.dataset_name = dataset_name
         self.samples = samples
@@ -52,9 +56,79 @@ class TtsFineTuningDataset(torch.utils.data.Dataset):
             self.speech_end_id,
         )
         self.prompt_compiler = prompt_compiler
+        self._inference_aligned_sft = inference_aligned_sft
+        self._ia_frac = inference_prompt_audio_fraction
+        self._ia_min_prompt = inference_min_prompt_speech_tokens
+        self._ia_min_cont = inference_min_continuation_speech_tokens
 
     def __len__(self) -> int:
         return self.length
+
+    def _build_inference_aligned_prompt(
+        self,
+        transcript: str,
+        speech_ids: np.ndarray,
+        voice_description: str,
+    ) -> tuple[str, int]:
+        """Build prompt matching InferencePromptCompiler + continuation + end.
+
+        Returns:
+            (full_prompt, n_prompt_speech_tokens). n_prompt_speech_tokens is 0 if
+            we fell back to the legacy training format (no extra label masking).
+        """
+        n = int(speech_ids.shape[0])
+        min_p, min_c = self._ia_min_prompt, self._ia_min_cont
+        if n < min_p + min_c + 4:
+            prompt = self.prompt_compiler.compile_prompt(
+                audio_prompt_transcription=transcript,
+                text_to_synthesize="",
+                speech_ids=speech_ids,
+                voice_description=voice_description,
+            )
+            return prompt, 0
+
+        n_prompt = int(round(n * self._ia_frac))
+        n_prompt = max(min_p, min(n_prompt, n - min_c))
+
+        prompt_speech = speech_ids[:n_prompt]
+        cont_speech = speech_ids[n_prompt:]
+
+        t = transcript.strip()
+        if not t:
+            prompt = self.prompt_compiler.compile_prompt(
+                audio_prompt_transcription=transcript,
+                text_to_synthesize="",
+                speech_ids=speech_ids,
+                voice_description=voice_description,
+            )
+            return prompt, 0
+
+        # Heuristic text split (Thai-friendly: by Unicode codepoints).
+        char_split = max(1, int(len(t) * (n_prompt / max(n, 1))))
+        if char_split >= len(t):
+            char_split = max(1, len(t) // 2)
+        prompt_transcript = t[:char_split].strip()
+        target_transcript = t[char_split:].strip()
+        if not prompt_transcript:
+            prompt_transcript = t[:1]
+            target_transcript = t[1:].strip() or t
+        if not target_transcript:
+            # Very short first segment: treat a small prefix as "prompt audio" text.
+            split_at = max(1, len(t) // 3)
+            prompt_transcript = t[:split_at].strip()
+            target_transcript = t[split_at:].strip() or t
+
+        ic = prompting.InferencePromptCompiler()
+        prefix = ic.compile_prompt(
+            audio_prompt_transcription=prompt_transcript,
+            text_to_synthesize=target_transcript,
+            speech_ids=prompt_speech,
+            voice_description=voice_description,
+            enable_instruction=True,
+        )
+        cont_str = prompting.format_speech_tokens_string(cont_speech.tolist())
+        full_prompt = prefix + cont_str + constants.SPEECH_END_TOKEN
+        return full_prompt, n_prompt
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         speech_ids = self.codes[self.indexes[idx][0] : self.indexes[idx][1]]
@@ -62,12 +136,18 @@ class TtsFineTuningDataset(torch.utils.data.Dataset):
         transcript = self._text_normalizer.normalize_with_language(
             sample.transcript, sample.language
         )
-        prompt = self.prompt_compiler.compile_prompt(
-            audio_prompt_transcription=transcript,
-            text_to_synthesize="",
-            speech_ids=speech_ids,
-            voice_description=sample.voice_description,
-        )
+        n_prompt_mask = 0
+        if self._inference_aligned_sft:
+            prompt, n_prompt_mask = self._build_inference_aligned_prompt(
+                transcript, speech_ids, sample.voice_description
+            )
+        else:
+            prompt = self.prompt_compiler.compile_prompt(
+                audio_prompt_transcription=transcript,
+                text_to_synthesize="",
+                speech_ids=speech_ids,
+                voice_description=sample.voice_description,
+            )
 
         input_ids = self.tokenizer(
             prompt, add_special_tokens=True, return_tensors="pt"
@@ -90,6 +170,15 @@ class TtsFineTuningDataset(torch.utils.data.Dataset):
         labels = torch.full_like(input_ids, constants.LOSS_IGNORE_TOKEN_ID)
         if separator_idx != -1:
             labels[separator_idx:] = input_ids[separator_idx:]
+            # Match inference: prompt speech codec tokens are supplied by the encoder,
+            # so do not train the LM to "predict" them autoregressively.
+            if n_prompt_mask > 0:
+                p0 = separator_idx + 1
+                p1 = min(
+                    p0 + n_prompt_mask,
+                    labels.shape[0],
+                )
+                labels[p0:p1] = constants.LOSS_IGNORE_TOKEN_ID
         labels[input_ids == self.pad_token_id] = constants.LOSS_IGNORE_TOKEN_ID
         attention_mask = (input_ids != self.pad_token_id).long()
 

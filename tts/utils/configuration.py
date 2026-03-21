@@ -60,6 +60,18 @@ class DatasetConfig:
     # To be set when loading the dataset.
     steps_per_epoch: int | None = None
 
+    # If True, SFT samples match zero-shot inference: user text is
+    # (prompt_transcript + target_text), assistant prefix is speech tokens from a
+    # *prefix* of the waveform only; loss applies to continuation + speech_end
+    # (prompt speech tokens are masked). See TtsFineTuningDataset.
+    inference_aligned_sft: bool = False
+    # Fraction of codec tokens used as "prompt audio" (rest is the continuation
+    # the model must learn to predict).
+    inference_prompt_audio_fraction: float = 0.35
+    # Minimum codec tokens for prompt / continuation when using inference alignment.
+    inference_min_prompt_speech_tokens: int = 40
+    inference_min_continuation_speech_tokens: int = 40
+
 
 @dataclasses.dataclass(frozen=True)
 class ModelingConfig:

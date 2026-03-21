@@ -29,6 +29,11 @@ def _format_speech_tokens(speech_ids: list[int]) -> str:
     return "".join(speech_tokens_str)
 
 
+def format_speech_tokens_string(speech_ids: Sequence[int]) -> str:
+    """Public helper: speech id list -> concatenated <|s_x|> string."""
+    return _format_speech_tokens(list(speech_ids))
+
+
 class PromptCompiler(abc.ABC):
     """Abstract base class for prompt compilers."""
 
