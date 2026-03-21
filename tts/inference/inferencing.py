@@ -1,6 +1,7 @@
 """Implements inference logic for local TTS models."""
 
 import dataclasses
+import re
 from typing import Any
 
 import torch
@@ -61,6 +62,11 @@ def extract_speech_ids(speech_tokens_str: list[str]) -> list[int]:
         else:
             logging.error("Unexpected token: %s", token_str)
     return speech_ids
+
+
+def extract_speech_ids_from_text(text: str) -> list[int]:
+    """Extract all speech ids from a decoded text span."""
+    return [int(match) for match in re.findall(r"<\|s_(\d+)\|>", text)]
 
 
 @torch.no_grad()
@@ -147,9 +153,11 @@ def _synthesize_audio(
 
     # Convert string speech tokens to speech token ids.
     if use_vllm:
-        speech_tokens = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-        # append the prompt speech ids to the generated speech ids
-        speech_tokens = torch.tensor(speech_ids + extract_speech_ids(speech_tokens))
+        # vLLM returns only completion token ids. Decode as a single sequence and
+        # extract speech tags robustly from the full text.
+        generated_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
+        generated_speech_ids = extract_speech_ids_from_text(generated_text)
+        speech_tokens = torch.tensor(speech_ids + generated_speech_ids)
     else:
         # Keep only the audio tokens.
         slice_start = input_ids.shape[1] - len(speech_ids)
@@ -161,12 +169,10 @@ def _synthesize_audio(
             generated_ids[:5].tolist() if len(generated_ids) > 0 else [],
         )
 
-        # Extract the speech token strings. Direct use of the output tokens
-        # is dangerous, as there might be non-speech tokens in the output.
-        speech_tokens_str = tokenizer.batch_decode(
-            generated_ids, skip_special_tokens=True
-        )
-        extracted_ids = extract_speech_ids(speech_tokens_str)
+        # Decode as one sequence and extract every <|s_x|> token robustly.
+        # This avoids shape-dependent behavior of batch_decode over 1D arrays.
+        generated_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
+        extracted_ids = extract_speech_ids_from_text(generated_text)
         speech_tokens = torch.tensor(extracted_ids)
 
         logging.info(
@@ -175,6 +181,13 @@ def _synthesize_audio(
             len(extracted_ids), len(speech_ids),
             len(extracted_ids) - len(speech_ids),
             extracted_ids[len(speech_ids):len(speech_ids)+10],
+        )
+
+    if len(speech_tokens) <= len(speech_ids):
+        raise ValueError(
+            "Model generated no new speech tokens beyond the prompt. "
+            "This usually means the model is undertrained, prompt/text mismatch, "
+            "or generation settings are too restrictive."
         )
 
     # Decode the speech tokens to speech waveform.
@@ -191,6 +204,11 @@ def _synthesize_audio(
     prompt_wav_length = len(speech_ids) / audio_decoder.token_rate
     prompt_wav_length = int(prompt_wav_length * audio_decoder.sample_rate)
 
+    if prompt_wav_length >= gen_wav.shape[1]:
+        raise ValueError(
+            "Prompt strip length is longer than decoded waveform. "
+            "Check codec token_rate/sample_rate alignment and generated token count."
+        )
     output_wav = gen_wav[:, prompt_wav_length:]
     logging.info(
         "[DIAG] After prompt strip (%d samples): shape %s, "

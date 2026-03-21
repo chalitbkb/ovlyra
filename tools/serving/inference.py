@@ -59,6 +59,27 @@ _USE_VLLM = flags.DEFINE_bool(
 _SEED = flags.DEFINE_integer(
     "seed", 42,
     "Random seed for inference")
+_TEMPERATURE = flags.DEFINE_float(
+    "temperature", 0.8,
+    "Sampling temperature")
+_MAX_TOKENS = flags.DEFINE_integer(
+    "max_tokens", 1500,
+    "Maximum generated speech tokens")
+_MIN_TOKENS = flags.DEFINE_integer(
+    "min_tokens", 10,
+    "Minimum generated speech tokens")
+_TOP_P = flags.DEFINE_float(
+    "top_p", 0.95,
+    "Nucleus sampling top-p")
+_TOP_K = flags.DEFINE_integer(
+    "top_k", 50,
+    "Top-k sampling")
+_REPETITION_PENALTY = flags.DEFINE_float(
+    "repetition_penalty", 1.0,
+    "Repetition penalty")
+_FREQUENCY_PENALTY = flags.DEFINE_float(
+    "frequency_penalty", 0.0,
+    "Frequency penalty")
 
 
 def main(argv: list[str]) -> None:
@@ -74,6 +95,13 @@ def main(argv: list[str]) -> None:
     output_path = _OUTPUT_PATH.value
     use_vllm = _USE_VLLM.value
     seed = _SEED.value
+    temperature = _TEMPERATURE.value
+    max_tokens = _MAX_TOKENS.value
+    min_tokens = _MIN_TOKENS.value
+    top_p = _TOP_P.value
+    top_k = _TOP_K.value
+    repetition_penalty = _REPETITION_PENALTY.value
+    frequency_penalty = _FREQUENCY_PENALTY.value
     # Initialize device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using device: {device}")
@@ -138,14 +166,14 @@ def main(argv: list[str]) -> None:
 
     # Inference settings
     inference_settings = inferencing.InferenceSettings(
-        temperature=0.8,
-        max_tokens=1500,
-        min_tokens=10,
-        top_p=0.95,
-        top_k=50,
-        repetition_penalty=1.0,
-        frequency_penalty=0.0,
-        seed=42,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        min_tokens=min_tokens,
+        top_p=top_p,
+        top_k=top_k,
+        repetition_penalty=repetition_penalty,
+        frequency_penalty=frequency_penalty,
+        seed=seed,
     )
 
     audio_prompt_transcription = prompt_transcription
